@@ -1,3 +1,8 @@
 target/
 .idea/
 gelly-partitioning.iml
+out/
+src/main/java/META-INF/
+flink-gelly-partitioning.iml
+
+
