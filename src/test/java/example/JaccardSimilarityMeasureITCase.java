@@ -19,8 +19,6 @@ public class JaccardSimilarityMeasureITCase extends MultipleProgramsTestBase {
 
 	private String edgesPath;
 
-	private String debugResultPath;
-
 	private String resultPath;
 
 	private String expected;
@@ -28,7 +26,7 @@ public class JaccardSimilarityMeasureITCase extends MultipleProgramsTestBase {
 	@Rule
 	public TemporaryFolder tempFolder = new TemporaryFolder();
 
-	public JaccardSimilarityMeasureITCase(ExecutionMode mode) {
+	public JaccardSimilarityMeasureITCase(TestExecutionMode mode) {
 		super(mode);
 	}
 
@@ -44,8 +42,9 @@ public class JaccardSimilarityMeasureITCase extends MultipleProgramsTestBase {
 
 	@Test
 	public void testJaccardSimilarityMeasureExample() throws Exception {
-		JaccardSimilarityMeasureExample.main(new String[]{edgesPath, resultPath});
-		expected = JaccardSimilarityMeasureData.JACCARD_EDGES;
+		JaccardSimilarityMeasureExample.main(new String[]{edgesPath, resultPath,
+				JaccardSimilarityMeasureData.MAX_ITERATIONS + ""});
+		expected = JaccardSimilarityMeasureData.JACCARD_VERTICES;
 	}
 
 	@After

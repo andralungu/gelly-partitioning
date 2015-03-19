@@ -1,20 +1,17 @@
 package example;
 
 import example.util.JaccardSimilarityMeasureData;
+import library.JaccardSimilarityMeasure;
 import org.apache.flink.api.common.ProgramDescription;
-import org.apache.flink.api.common.functions.CrossFunction;
-import org.apache.flink.api.common.functions.FilterFunction;
-import org.apache.flink.api.common.functions.GroupReduceFunction;
-import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.common.functions.*;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.graph.Edge;
-import org.apache.flink.graph.Graph;
-import org.apache.flink.graph.Vertex;
+import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.graph.*;
 import org.apache.flink.types.NullValue;
-import org.apache.flink.util.Collector;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 
@@ -28,21 +25,37 @@ public class JaccardSimilarityMeasureExample implements ProgramDescription {
 
 		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 
-		DataSet<Edge<Long, Double>> edges = getEdgesDataSet(env);
+		DataSet<Edge<Long, NullValue>> edges = getEdgesDataSet(env);
 
-		Graph<Long, NullValue, Double> graph = Graph.fromDataSet(edges, env);
-		// undirect the graph
-		Graph<Long, NullValue, Double> undirectedGraph = graph.getUndirected();
+		Graph<Long, NullValue, NullValue> graph = Graph.fromDataSet(edges, env);
 
-		DataSet<Vertex<Long, HashSet<Long>>> verticesWithNeighbors = assignNeighborsAsValues(undirectedGraph.getEdges());
+		// the result is stored within the vertex value
+		DataSet<Vertex<Long, Tuple2<HashSet<Long>,HashMap<Long, Double>>>> verticesWithNeighbors =
+				graph.reduceOnNeighbors(new GatherNeighbors(), EdgeDirection.ALL);
 
-		DataSet<Edge<Long, Double>> result = computeJaccardSimilarity(verticesWithNeighbors);
+		Graph<Long, Tuple2<HashSet<Long>,HashMap<Long, Double>>, NullValue> graphWithVertexValues =
+				Graph.fromDataSet(verticesWithNeighbors, edges, env);
+
+		// set up the program
+		Graph<Long, Tuple2<HashSet<Long>,HashMap<Long, Double>>, NullValue> jaccardGraph =
+				graphWithVertexValues.run(new JaccardSimilarityMeasure(maxIterations));
+
+		// get the result (only the Jaccard coefficients)
+		DataSet<Tuple2<Long, HashMap<Long, Double>>> resultedVertices = jaccardGraph.getVertices()
+				.map(new MapFunction<Vertex<Long, Tuple2<HashSet<Long>, HashMap<Long, Double>>>, Tuple2<Long, HashMap<Long, Double>>>() {
+
+					@Override
+					public Tuple2<Long, HashMap<Long, Double>> map(Vertex<Long, Tuple2<HashSet<Long>,
+							HashMap<Long, Double>>> vertex) throws Exception {
+						return new Tuple2<Long, HashMap<Long, Double>>(vertex.getId(), vertex.getValue().f1);
+					}
+				});
 
 		// emit result
 		if (fileOutput) {
-			result.writeAsCsv(outputPath, "\n", ",");
+			resultedVertices.writeAsCsv(outputPath, "\n", ",");
 		} else {
-			result.print();
+			resultedVertices.print();
 		}
 
 		env.execute("Executing Jaccard Similarity Measure");
@@ -55,73 +68,28 @@ public class JaccardSimilarityMeasureExample implements ProgramDescription {
 
 	/**
 	 * Each vertex will have a HashSet containing its neighbors as value.
-	 *
-	 * @param edges
-	 * @return
 	 */
-	private static DataSet<Vertex<Long, HashSet<Long>>> assignNeighborsAsValues(DataSet<Edge<Long, Double>> edges) {
+	@SuppressWarnings("serial")
+	private static final class GatherNeighbors implements NeighborsFunction<Long, NullValue, NullValue,
+			Vertex<Long, Tuple2<HashSet<Long>,HashMap<Long, Double>>>> {
 
-		return edges.groupBy(0).reduceGroup(new GroupReduceFunction<Edge<Long, Double>, Vertex<Long, HashSet<Long>>>() {
+		@Override
+		public Vertex<Long, Tuple2<HashSet<Long>,HashMap<Long, Double>>> iterateNeighbors(Iterable<Tuple3<Long, Edge<Long, NullValue>,
+				Vertex<Long, NullValue>>> neighbors) throws Exception {
 
-			@Override
-			public void reduce(Iterable<Edge<Long, Double>> iterableEdge,
-							   Collector<Vertex<Long, HashSet<Long>>> collector) throws Exception {
+			HashSet<Long> neighborsHashSet = new HashSet<Long>();
+			Tuple3<Long, Edge<Long, NullValue>, Vertex<Long, NullValue>> next = null;
+			Iterator<Tuple3<Long, Edge<Long, NullValue>, Vertex<Long, NullValue>>> neighborsIterator =
+					neighbors.iterator();
 
-				Iterator<Edge<Long, Double>> iteratorEdge = iterableEdge.iterator();
-				HashSet<Long> neighbors = new HashSet<Long>();
-				Long vertexSrcId = 0L;
-
-				while(iteratorEdge.hasNext()) {
-					Edge<Long, Double> iteratorEdgeNext = iteratorEdge.next();
-					vertexSrcId = iteratorEdgeNext.getSource();
-					neighbors.add(iteratorEdgeNext.getTarget());
-				}
-
-				collector.collect(new Vertex<Long, HashSet<Long>>(vertexSrcId, neighbors));
+			while (neighborsIterator.hasNext()) {
+				next = neighborsIterator.next();
+				neighborsHashSet.add(next.f2.getId());
 			}
-		});
-	}
 
-	/**
-	 * Consider the edge x-y
-	 * We denote by sizeX and sizeY, the neighbors hash set size of x and y respectively.
-	 * sizeX+sizeY = union + intersection of neighborhoods
-	 * size(hashSetX.addAll(hashSetY)).distinct = union of neighborhoods
-	 * The intersection can then be deduced.
-	 *
-	 * Jaccard Similarity is then, the intersection/union.
-	 *
-	 * @param verticesWithNeighbors
-	 * @return
-	 */
-	private static DataSet<Edge<Long, Double>> computeJaccardSimilarity(
-			DataSet<Vertex<Long, HashSet<Long>>> verticesWithNeighbors) {
-
-		return verticesWithNeighbors.cross(verticesWithNeighbors).with(new CrossFunction<Vertex<Long, HashSet<Long>>,
-				Vertex<Long, HashSet<Long>>, Edge<Long, Double>>() {
-
-			@Override
-			public Edge<Long, Double> cross(Vertex<Long, HashSet<Long>> vertexX,
-											Vertex<Long, HashSet<Long>> vertexY) throws Exception {
-
-				int sizeX = vertexX.getValue().size();
-				int sizeY = vertexY.getValue().size();
-
-				double unionPlusIntersection = sizeX + sizeY;
-				// within a HashSet, all elements are distinct
-				vertexX.getValue().addAll(vertexY.getValue());
-				//vertexX.value contains the union
-				double union = vertexX.getValue().size();
-				double intersection = unionPlusIntersection - union;
-
-				return new Edge<Long, Double>(vertexX.getId(), vertexY.getId(), intersection/union);
-			}
-		}).filter(new FilterFunction<Edge<Long, Double>>() {
-			@Override
-			public boolean filter(Edge<Long, Double> edge) throws Exception {
-				return !edge.getSource().equals(edge.getTarget());
-			}
-		});
+			return new Vertex<Long, Tuple2<HashSet<Long>, HashMap<Long, Double>>>(next.f0,
+					new Tuple2<>(neighborsHashSet, new HashMap<Long, Double>()));
+		}
 	}
 
 	// *************************************************************************
@@ -131,28 +99,30 @@ public class JaccardSimilarityMeasureExample implements ProgramDescription {
 	private static boolean fileOutput = false;
 	private static String edgeInputPath = null;
 	private static String outputPath = null;
+	private static Integer maxIterations = JaccardSimilarityMeasureData.MAX_ITERATIONS;
 
 	private static boolean parseParameters(String [] args) {
 		if(args.length > 0) {
-			if(args.length != 2) {
-				System.err.println("Usage JaccardSimilarityMeasureExample <edge path> <output path>");
+			if(args.length != 3) {
+				System.err.println("Usage JaccardSimilarityMeasureExample <edge path> <output path> <maxIterations>");
 				return false;
 			}
 
 			fileOutput = true;
 			edgeInputPath = args[0];
 			outputPath = args[1];
+			maxIterations = Integer.parseInt(args[2]);
 		} else {
 			System.out.println("Executing JaccardSimilarityMeasure example with default parameters and built-in default data.");
 			System.out.println("Provide parameters to read input data from files.");
-			System.out.println("Usage JaccardSimilarityMeasureExample <edge path> <output path>");
+			System.out.println("Usage JaccardSimilarityMeasureExample <edge path> <output path> <maxIterations>");
 		}
 
 		return true;
 	}
 
 	@SuppressWarnings("serial")
-	private static DataSet<Edge<Long, Double>> getEdgesDataSet(ExecutionEnvironment env) {
+	private static DataSet<Edge<Long, NullValue>> getEdgesDataSet(ExecutionEnvironment env) {
 
 		if(fileOutput) {
 			return env.readCsvFile(edgeInputPath)
@@ -160,10 +130,10 @@ public class JaccardSimilarityMeasureExample implements ProgramDescription {
 					.fieldDelimiter("\t")
 					.lineDelimiter("\n")
 					.types(Long.class, Long.class)
-					.map(new MapFunction<Tuple2<Long, Long>, Edge<Long, Double>>() {
+					.map(new MapFunction<Tuple2<Long, Long>, Edge<Long, NullValue>>() {
 						@Override
-						public Edge<Long, Double> map(Tuple2<Long, Long> tuple2) throws Exception {
-							return new Edge<Long, Double>(tuple2.f0, tuple2.f1, new Double(0));
+						public Edge<Long, NullValue> map(Tuple2<Long, Long> tuple2) throws Exception {
+							return new Edge<Long, NullValue>(tuple2.f0, tuple2.f1, NullValue.getInstance());
 						}
 					});
 		} else {
