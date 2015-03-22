@@ -104,7 +104,7 @@ public class JaccardSimilarityMeasureExample implements ProgramDescription {
 	private static boolean parseParameters(String [] args) {
 		if(args.length > 0) {
 			if(args.length != 3) {
-				System.err.println("Usage JaccardSimilarityMeasureExample <edge path> <output path> <maxIterations>");
+				System.err.println("Usage JaccardSimilarityMeasure <edge path> <output path> <maxIterations>");
 				return false;
 			}
 
@@ -115,7 +115,7 @@ public class JaccardSimilarityMeasureExample implements ProgramDescription {
 		} else {
 			System.out.println("Executing JaccardSimilarityMeasure example with default parameters and built-in default data.");
 			System.out.println("Provide parameters to read input data from files.");
-			System.out.println("Usage JaccardSimilarityMeasureExample <edge path> <output path> <maxIterations>");
+			System.out.println("Usage JaccardSimilarityMeasure <edge path> <output path> <maxIterations>");
 		}
 
 		return true;
