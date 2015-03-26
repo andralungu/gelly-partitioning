@@ -13,7 +13,7 @@ import util.NodeSplittingData;
 import java.io.File;
 
 @RunWith(Parameterized.class)
-public class CountDegreeTest extends MultipleProgramsTestBase {
+public class CountDegreeITCase extends MultipleProgramsTestBase {
 
 	private String edgesPath;
 
@@ -24,7 +24,7 @@ public class CountDegreeTest extends MultipleProgramsTestBase {
 	@Rule
 	public TemporaryFolder tempFolder = new TemporaryFolder();
 
-	public CountDegreeTest(TestExecutionMode mode) {
+	public CountDegreeITCase(TestExecutionMode mode) {
 		super(mode);
 	}
 
@@ -38,7 +38,8 @@ public class CountDegreeTest extends MultipleProgramsTestBase {
 
 	@Test
 	public void testCountDegree() throws Exception {
-		NodeSplittingFirstStep.main(new String[]{edgesPath, resultPath, NodeSplittingData.MAX_ITERATIONS + ""});
+		AlphaNodeSplitting.main(new String[]{edgesPath, resultPath, NodeSplittingData.MAX_ITERATIONS + "",
+				NodeSplittingData.ALPHA + ""});
 		expected = NodeSplittingData.VERTICES_WITH_DEGREES;
 	}
 

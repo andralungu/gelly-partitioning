@@ -12,7 +12,8 @@ public class NodeSplittingData {
 
 	public static final Integer MAX_ITERATIONS = 25;
 
-	// 5 is the vertex with the highest number of degrees
+	public static final Integer ALPHA = 2;
+
 	public static final String EDGES = "1	2\n" + "2	3\n" + "2	4\n" + "2	5\n" + "3	4\n" +
 			"4	5\n" + "5	6\n" + "5	7\n" + "5	8\n" + "5	9\n" + "5	10\n" + "5	11\n" + "5	12\n" +
 			"5	13\n" + "5	14\n" + "5	15\n" + "5	16\n" + "5	17\n" + "5	18\n" + "5	19\n" + "5	20\n" +
