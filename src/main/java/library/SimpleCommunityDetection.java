@@ -1,5 +1,6 @@
 package library;
 
+import com.google.common.base.Charsets;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.graph.Edge;
 import org.apache.flink.graph.Graph;
@@ -8,7 +9,10 @@ import org.apache.flink.graph.spargel.MessageIterator;
 import org.apache.flink.graph.spargel.MessagingFunction;
 import org.apache.flink.graph.spargel.VertexCentricIteration;
 import org.apache.flink.graph.spargel.VertexUpdateFunction;
+import org.apache.flink.shaded.com.google.common.io.Files;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -30,14 +34,29 @@ public class SimpleCommunityDetection implements GraphAlgorithm<Long, Tuple2<Lon
 				iteration = undirectedGraph.createVertexCentricIteration(new VertexLabelUpdater(),
 				new LabelMessenger(), maxIterations);
 
+		iteration.setSolutionSetUnmanagedMemory(true);
+
 		return undirectedGraph.runVertexCentricIteration(iteration);
 	}
 
 	public static final class VertexLabelUpdater extends VertexUpdateFunction<Long, Tuple2<Long, Double>, Tuple2<Long, Double>> {
 
+		private File tempFile;
+
+		public VertexLabelUpdater() {
+			try {
+				tempFile = File.createTempFile("update_monitoring", ".txt");
+				System.out.println("Vertices file" + tempFile.getAbsolutePath());
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+
 		@Override
 		public void updateVertex(Long vertexKey, Tuple2<Long, Double> labelScore,
 								 MessageIterator<Tuple2<Long, Double>> inMessages) throws Exception {
+
+			long start = System.currentTimeMillis();
 
 			// we would like these two maps to be ordered
 			Map<Long, Double> receivedLabelsWithScores = new TreeMap<Long, Double>();
@@ -93,19 +112,50 @@ public class SimpleCommunityDetection implements GraphAlgorithm<Long, Tuple2<Lon
 				// update own label
 				setNewVertexValue(new Tuple2<Long, Double>(maxScoreLabel, highestScore));
 			}
+
+			long stop = System.currentTimeMillis();
+			long time = stop - start;
+			String updateTimeElapsed = "Vertex key " + vertexKey +" Superstep number " + getSuperstepNumber() +
+					" time elapsed vertex update " + time + "\n";
+			Files.append(updateTimeElapsed, tempFile, Charsets.UTF_8);
 		}
 	}
 
 	public static final class LabelMessenger extends MessagingFunction<Long, Tuple2<Long, Double>,
 			Tuple2<Long, Double>, Double> {
 
+		private File tempFile;
+
+		public LabelMessenger() {
+			try {
+				tempFile = File.createTempFile("message_monitoring", ".txt");
+				System.out.println("Messages file" + tempFile.getAbsolutePath());
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+
 		@Override
 		public void sendMessages(Long vertexKey, Tuple2<Long, Double> vertexValue) throws Exception {
 
+			long start = System.currentTimeMillis();
+
+			int numberOfMessages = 0;
+
 			for(Edge<Long, Double> edge : getOutgoingEdges()) {
 				sendMessageTo(edge.getTarget(), new Tuple2<Long, Double>(vertexValue.f0, vertexValue.f1 * edge.getValue()));
+				numberOfMessages++;
 			}
 
+			String messages = "Vertex key " + vertexKey + " Superstep number " + getSuperstepNumber() +
+					" number of messages " + numberOfMessages + "\n";
+			Files.append(messages, tempFile, Charsets.UTF_8);
+
+			long stop = System.currentTimeMillis();
+			long time = stop - start;
+			String updateTimeElapsed = "Vertex key " + vertexKey + " Superstep number " + getSuperstepNumber() +
+					" time elapsed messaging function " + time + "\n";
+			Files.append(updateTimeElapsed, tempFile, Charsets.UTF_8);
 		}
 	}
 }
