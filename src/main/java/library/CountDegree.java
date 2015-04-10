@@ -25,6 +25,8 @@ public class CountDegree implements GraphAlgorithm<String, Long, NullValue> {
 		VertexCentricIteration<String, Long, Long, NullValue> iteration = undirectedGraph
 				.createVertexCentricIteration(new VertexUpdater(), new Messenger(), maxIterations);
 
+		iteration.setSolutionSetUnmanagedMemory(true);
+
 		return undirectedGraph.runVertexCentricIteration(iteration);
 	}
 
