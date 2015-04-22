@@ -6,9 +6,9 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.graph.Edge;
 import org.apache.flink.graph.Graph;
 import org.apache.flink.graph.GraphAlgorithm;
+import org.apache.flink.graph.spargel.IterationConfiguration;
 import org.apache.flink.graph.spargel.MessageIterator;
 import org.apache.flink.graph.spargel.MessagingFunction;
-import org.apache.flink.graph.spargel.VertexCentricIteration;
 import org.apache.flink.graph.spargel.VertexUpdateFunction;
 import org.apache.flink.types.NullValue;
 
@@ -31,10 +31,12 @@ public class JaccardSimilarityMeasure implements GraphAlgorithm<Long, Tuple2<Has
 
 		Graph<Long, Tuple2<HashSet<Long>, HashMap<Long,Double>>, NullValue> undirectedGraph = graph.getUndirected();
 
-		VertexCentricIteration<Long, Tuple2<HashSet<Long>, HashMap<Long, Double>>, Tuple2<Long, HashSet<Long>>, NullValue> iteration =
-				undirectedGraph.createVertexCentricIteration(new VertexUpdateJaccardCoefficient(), new Messenger(), maxIterations);
+		IterationConfiguration parameters = new IterationConfiguration();
 
-		return undirectedGraph.runVertexCentricIteration(iteration);
+		parameters.setSolutionSetUnmanagedMemory(true);
+
+		return undirectedGraph.runVertexCentricIteration(new VertexUpdateJaccardCoefficient(),
+				new Messenger(), maxIterations, parameters);
 	}
 
 	/**
