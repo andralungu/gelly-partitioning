@@ -1,6 +1,7 @@
 import library.CountDegree;
 import nl.peterbloem.powerlaws.Continuous;
 import org.apache.flink.api.common.functions.CoGroupFunction;
+import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.GroupReduceFunction;
 import org.apache.flink.api.common.functions.MapFunction;
@@ -32,6 +33,7 @@ public class SortDegreeNodeSplitting {
 		}
 
 		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+		env.getConfig().disableSysoutLogging();
 
 		DataSet<Edge<String, NullValue>> edges = getEdgesDataSet(env);
 
@@ -53,7 +55,7 @@ public class SortDegreeNodeSplitting {
 
 		Continuous distribution = Continuous.fit(arrayOfDegrees).fit();
 
-		// retrive xMin
+		// retrieve xMin
 		final double xMin = distribution.xMin();
 
 		DataSet<Vertex<String, NullValue>> skewedVertices = verticesWithDegrees
@@ -84,7 +86,7 @@ public class SortDegreeNodeSplitting {
 
 		DataSet<Vertex<String, Long>> aggregatedVertices = treeAggregate(resultedVertices);
 
-		// emit result
+		//emit result
 		if (fileOutput) {
 			aggregatedVertices.writeAsCsv(outputPath, "\n", ",");
 		} else {
@@ -132,43 +134,61 @@ public class SortDegreeNodeSplitting {
 	}
 
 	/**
-	 * Method that identifies the splitted vertices and adds up the partial results.
+	 * Method that identifies the split vertices and adds up the partial results.
 	 *
 	 * @param resultedVertices the vertices resulted from the computation of the algorithm
 	 * @return
 	 */
 	private static DataSet<Vertex<String, Long>> treeAggregate(DataSet<Vertex<String, Long>> resultedVertices) {
 
-		return resultedVertices.flatMap(new FlatMapFunction<Vertex<String, Long>, Vertex<String, Long>>() {
+		DataSet<Vertex<String, Long>> regularVertices = resultedVertices.filter(new FilterFunction<Vertex<String, Long>>() {
 
 			@Override
-			public void flatMap(Vertex<String, Long> vertex, Collector<Vertex<String, Long>> collector) throws Exception {
-				int pos = vertex.getId().indexOf("_");
+			public boolean filter(Vertex<String, Long> vertex) throws Exception {
 
-				// if there is a splitted vertex
-				if(pos > -1) {
-					collector.collect(new Vertex<String, Long>(vertex.getId().substring(0, pos), vertex.getValue()));
-				} else {
-					collector.collect(vertex);
-				}
-			}
-		}).groupBy(0).reduceGroup(new GroupReduceFunction<Vertex<String, Long>, Vertex<String, Long>>() {
-
-			@Override
-			public void reduce(Iterable<Vertex<String, Long>> iterable,
-							   Collector<Vertex<String, Long>> collector) throws Exception {
-				long sum = 0;
-				Vertex<String, Long> vertex = new Vertex<String, Long>();
-
-				Iterator<Vertex<String, Long>> iterator = iterable.iterator();
-				while (iterator.hasNext()) {
-					vertex = iterator.next();
-					sum += vertex.getValue();
-				}
-
-				collector.collect(new Vertex<String, Long>(vertex.getId(), sum));
+				return (vertex.getId().indexOf("_") <= -1);
 			}
 		});
+
+		DataSet<Vertex<String, Long>> splitVertices = resultedVertices.filter(new FilterFunction<Vertex<String, Long>>() {
+
+			@Override
+			public boolean filter(Vertex<String, Long> vertex) throws Exception {
+
+				return (vertex.getId().indexOf("_") > -1);
+			}
+		});
+
+		// add up the partial values only for the split vertices
+		for(int i = 0; i < level; i++) {
+			splitVertices = splitVertices.flatMap(new FlatMapFunction<Vertex<String, Long>, Vertex<String, Long>>() {
+
+				@Override
+				public void flatMap(Vertex<String, Long> vertex, Collector<Vertex<String, Long>> collector) throws Exception {
+					int pos = vertex.getId().lastIndexOf("_");
+
+					collector.collect(new Vertex<String, Long>(vertex.getId().substring(0, pos), vertex.getValue()));
+				}
+			}).groupBy(0).reduceGroup(new GroupReduceFunction<Vertex<String, Long>, Vertex<String, Long>>() {
+
+				@Override
+				public void reduce(Iterable<Vertex<String, Long>> iterable,
+								   Collector<Vertex<String, Long>> collector) throws Exception {
+					long sum = 0;
+					Vertex<String, Long> vertex = new Vertex<String, Long>();
+
+					Iterator<Vertex<String, Long>> iterator = iterable.iterator();
+					while (iterator.hasNext()) {
+						vertex = iterator.next();
+						sum += vertex.getValue();
+					}
+
+					collector.collect(new Vertex<String, Long>(vertex.getId(), sum));
+				}
+			});
+		}
+
+		return regularVertices.union(splitVertices);
 	}
 
 	private static final class SplitSourceCoGroup implements
@@ -187,6 +207,12 @@ public class SortDegreeNodeSplitting {
 			Iterator<Vertex<String, NullValue>> vertexIterator = iterableVertices.iterator();
 			Iterator<Edge<String, NullValue>> edgeIterator = iterableEdges.iterator();
 
+			Vertex<String, NullValue> vertex = null;
+
+			if(vertexIterator.hasNext()) {
+				vertex = vertexIterator.next();
+			}
+
 			while(edgeIterator.hasNext()) {
 				Edge<String, NullValue> edge = edgeIterator.next();
 
@@ -199,8 +225,8 @@ public class SortDegreeNodeSplitting {
 				if(targetHashCode < 0) {
 					targetHashCode *= -1;
 				}
-				if (vertexIterator.hasNext()) {
-					collector.collect(new Edge<String, NullValue>(vertexIterator.next().getId() + "_" + targetHashCode % alpha,
+				if(vertex != null) {
+					collector.collect(new Edge<String, NullValue>(vertex.getId() + "_" + targetHashCode % alpha,
 							edge.getTarget(), NullValue.getInstance()));
 				} else {
 					collector.collect(edge);
@@ -227,6 +253,12 @@ public class SortDegreeNodeSplitting {
 			Iterator<Vertex<String, NullValue>> vertexIterator = iterableVertices.iterator();
 			Iterator<Edge<String, NullValue>> edgeIterator = iterableEdges.iterator();
 
+			Vertex<String, NullValue> vertex = null;
+
+			if(vertexIterator.hasNext()) {
+				vertex = vertexIterator.next();
+			}
+
 			while(edgeIterator.hasNext()) {
 				Edge<String, NullValue> edge = edgeIterator.next();
 
@@ -240,9 +272,9 @@ public class SortDegreeNodeSplitting {
 					sourceHashCode *= -1;
 				}
 
-				if (vertexIterator.hasNext()) {
+				if (vertex != null) {
 					collector.collect(new Edge<String, NullValue>(edge.getSource(),
-							vertexIterator.next().getId() + "_" + sourceHashCode % alpha, NullValue.getInstance()));
+							vertex.getId() + "_" + sourceHashCode % alpha, NullValue.getInstance()));
 				} else {
 					collector.collect(edge);
 				}

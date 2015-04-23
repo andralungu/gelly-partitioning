@@ -39,6 +39,7 @@ public class CountDegree implements GraphAlgorithm<String, Long, NullValue> {
 				degree += msg;
 			}
 
+
 			setNewVertexValue(degree);
 		}
 	}
