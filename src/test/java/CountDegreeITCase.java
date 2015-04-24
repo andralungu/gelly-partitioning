@@ -38,8 +38,8 @@ public class CountDegreeITCase extends MultipleProgramsTestBase {
 
 	@Test
 	public void testCountDegree() throws Exception {
-		AlphaNodeSplitting.main(new String[]{edgesPath, resultPath, NodeSplittingData.MAX_ITERATIONS + "",
-				NodeSplittingData.ALPHA + ""});
+		SortDegreeNodeSplitting.main(new String[]{edgesPath, resultPath, NodeSplittingData.MAX_ITERATIONS + "",
+				NodeSplittingData.ALPHA + "", NodeSplittingData.LEVEL + ""});
 		expected = NodeSplittingData.VERTICES_WITH_DEGREES;
 	}
 

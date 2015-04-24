@@ -5,7 +5,6 @@ import org.apache.flink.graph.Graph;
 import org.apache.flink.graph.GraphAlgorithm;
 import org.apache.flink.graph.spargel.MessageIterator;
 import org.apache.flink.graph.spargel.MessagingFunction;
-import org.apache.flink.graph.spargel.VertexCentricIteration;
 import org.apache.flink.graph.spargel.VertexUpdateFunction;
 import org.apache.flink.types.NullValue;
 
@@ -22,12 +21,7 @@ public class CountDegree implements GraphAlgorithm<String, Long, NullValue> {
 
 		Graph<String, Long, NullValue> undirectedGraph = graph.getUndirected();
 
-		VertexCentricIteration<String, Long, Long, NullValue> iteration = undirectedGraph
-				.createVertexCentricIteration(new VertexUpdater(), new Messenger(), maxIterations);
-
-		iteration.setSolutionSetUnmanagedMemory(true);
-
-		return undirectedGraph.runVertexCentricIteration(iteration);
+		return undirectedGraph.runVertexCentricIteration(new VertexUpdater(), new Messenger(), maxIterations);
 	}
 
 	/**
@@ -44,6 +38,7 @@ public class CountDegree implements GraphAlgorithm<String, Long, NullValue> {
 			for(long msg : inMessages) {
 				degree += msg;
 			}
+
 
 			setNewVertexValue(degree);
 		}
