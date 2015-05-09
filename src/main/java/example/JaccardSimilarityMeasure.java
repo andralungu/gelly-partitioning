@@ -46,7 +46,7 @@ public class JaccardSimilarityMeasure implements ProgramDescription {
 
 		// simulate a vertex centric iteration with groupReduceOnNeighbors
 		DataSet<Vertex<Long, HashMap<Long, Double>>> verticesWithJaccardValues =
-				undirectedGraph.groupReduceOnNeighbors(new ComputeJaccard(), EdgeDirection.ALL);
+				undirectedGraph.groupReduceOnNeighbors(new ComputeJaccard(), EdgeDirection.IN);
 
 		// emit result
 		if (fileOutput) {
@@ -144,23 +144,21 @@ public class JaccardSimilarityMeasure implements ProgramDescription {
 	private static boolean fileOutput = false;
 	private static String edgeInputPath = null;
 	private static String outputPath = null;
-	private static Integer maxIterations = JaccardSimilarityMeasureData.MAX_ITERATIONS;
 
 	private static boolean parseParameters(String [] args) {
 		if(args.length > 0) {
-			if(args.length != 3) {
-				System.err.println("Usage JaccardSimilarityMeasure <edge path> <output path> <maxIterations>");
+			if(args.length != 2) {
+				System.err.println("Usage JaccardSimilarityMeasure <edge path> <output path>");
 				return false;
 			}
 
 			fileOutput = true;
 			edgeInputPath = args[0];
 			outputPath = args[1];
-			maxIterations = Integer.parseInt(args[2]);
 		} else {
 			System.out.println("Executing JaccardSimilarityMeasure example with default parameters and built-in default data.");
 			System.out.println("Provide parameters to read input data from files.");
-			System.out.println("Usage JaccardSimilarityMeasure <edge path> <output path> <maxIterations>");
+			System.out.println("Usage JaccardSimilarityMeasure <edge path> <output path>");
 		}
 
 		return true;
