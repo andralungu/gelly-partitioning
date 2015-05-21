@@ -35,7 +35,7 @@ public class JaccardSimilarityMeasure implements ProgramDescription {
 		Graph<Long, NullValue, NullValue> graph = Graph.fromDataSet(edges, env);
 
 		// the result is stored within the vertex value
-		DataSet<Vertex<Long, Tuple2<HashSet<Long>,HashMap<Long, Double>>>> verticesWithNeighbors =
+		DataSet<Vertex<Long, Tuple2<HashSet<Long>, HashMap<Long, Double>>>> verticesWithNeighbors =
 				graph.groupReduceOnNeighbors(new GatherNeighbors(), EdgeDirection.ALL);
 
 		Graph<Long, Tuple2<HashSet<Long>, HashMap<Long, Double>>, NullValue> graphWithVertexValues =

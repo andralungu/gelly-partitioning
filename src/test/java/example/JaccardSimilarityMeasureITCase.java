@@ -42,7 +42,7 @@ public class JaccardSimilarityMeasureITCase extends MultipleProgramsTestBase {
 
 	@Test
 	public void testJaccardSimilarityMeasureExample() throws Exception {
-		JaccardSimilarityMeasure.main(new String[]{edgesPath, resultPath});
+		GSAJaccardSimilarityMeasure.main(new String[]{edgesPath, resultPath});
 		expected = JaccardSimilarityMeasureData.JACCARD_VERTICES;
 	}
 
