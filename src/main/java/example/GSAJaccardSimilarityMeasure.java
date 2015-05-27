@@ -1,9 +1,7 @@
 package example;
 
 import org.apache.flink.api.common.ProgramDescription;
-import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.tuple.Tuple2;
@@ -14,12 +12,9 @@ import org.apache.flink.graph.ReduceNeighborsFunction;
 import org.apache.flink.graph.Triplet;
 import org.apache.flink.graph.Vertex;
 import org.apache.flink.types.NullValue;
-import org.apache.flink.util.Collector;
 import util.JaccardSimilarityMeasureData;
 
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.TreeMap;
 
 public class GSAJaccardSimilarityMeasure implements ProgramDescription {
 
@@ -34,59 +29,48 @@ public class GSAJaccardSimilarityMeasure implements ProgramDescription {
 		DataSet<Edge<String, NullValue>> edges = getEdgesDataSet(env);
 
 		// initialize the vertex values with empty sets
-		Graph<String, Tuple2<HashSet<String>, HashMap<String, Double>>, NullValue> graph = Graph.fromDataSet(edges,
-				new MapFunction<String, Tuple2<HashSet<String>, HashMap<String, Double>>>() {
+		Graph<String, HashSet<String>, NullValue> graph = Graph.fromDataSet(edges,
+				new MapFunction<String, HashSet<String>>() {
 
 					@Override
-					public Tuple2<HashSet<String>, HashMap<String, Double>> map(String id) throws Exception {
+					public HashSet<String> map(String id) throws Exception {
 						HashSet<String> neighbors = new HashSet<String>();
 						neighbors.add(id);
 
-						return new Tuple2<HashSet<String>, HashMap<String, Double>>(neighbors,
-								new HashMap<String, Double>());
+						return new HashSet<String>(neighbors);
 					}
 				}, env);
 
 		// Simulate GSA
 		// Gather: no-op in this case
 		// Sum: create the set of neighbors
-		DataSet<Tuple2<String, Tuple2<HashSet<String>, HashMap<String, Double>>>> computedNeighbors =
+		DataSet<Tuple2<String, HashSet<String>>> computedNeighbors =
 				graph.reduceOnNeighbors(new GatherNeighbors(), EdgeDirection.ALL);
 
-		// Apply: attach the computed values as vertex values
-		DataSet<Vertex<String, Tuple2<HashSet<String>, HashMap<String, Double>>>> verticesWithNeighbors =
-				computedNeighbors.map(new MapFunction<Tuple2<String, Tuple2<HashSet<String>, HashMap<String, Double>>>,
-						Vertex<String, Tuple2<HashSet<String>, HashMap<String, Double>>>>() {
+		// Apply: attach the computed values to the vertices
+		// joinWithVertices to update the node values
+		DataSet<Vertex<String, HashSet<String>>> verticesWithNeighbors =
+				graph.joinWithVertices(computedNeighbors, new MapFunction<Tuple2<HashSet<String>, HashSet<String>>,
+						HashSet<String>>() {
 
 					@Override
-					public Vertex<String, Tuple2<HashSet<String>, HashMap<String, Double>>> map(Tuple2<String, Tuple2<HashSet<String>,
-							HashMap<String, Double>>> tuple2) throws Exception {
-
-						return new Vertex<String, Tuple2<HashSet<String>, HashMap<String, Double>>>(tuple2.f0, tuple2.f1);
+					public HashSet<String> map(Tuple2<HashSet<String>, HashSet<String>> tuple2) throws Exception {
+						return tuple2.f1;
 					}
-				});
+				}).getVertices();
 
-		Graph<String, Tuple2<HashSet<String>, HashMap<String, Double>>, NullValue> graphWithNeighbors =
+		Graph<String, HashSet<String>, NullValue> graphWithNeighbors =
 				Graph.fromDataSet(verticesWithNeighbors, edges, env);
 
 		// Scatter: compare neighbors; compute Jaccard
-		DataSet<Vertex<String, TreeMap<String, Double>>> verticesWithJaccardValues =
-				graphWithNeighbors.getTriplets().flatMap(new ComputeJaccard())
-						.groupBy(0).reduce(new ReduceFunction<Vertex<String, TreeMap<String, Double>>>() {
-
-					@Override
-					public Vertex<String, TreeMap<String, Double>> reduce(Vertex<String, TreeMap<String, Double>> first,
-																	  Vertex<String, TreeMap<String, Double>> second) throws Exception {
-						first.getValue().putAll(second.getValue());
-						return new Vertex<String, TreeMap<String, Double>>(first.getId(), first.getValue());
-					}
-				});
+		DataSet<Edge<String, Double>> edgesWithJaccardValues = graphWithNeighbors.getTriplets()
+				.map(new ComputeJaccard());
 
 		// emit result
 		if (fileOutput) {
-			verticesWithJaccardValues.writeAsCsv(outputPath, "\n", ",");
+			edgesWithJaccardValues.writeAsCsv(outputPath, "\n", ",");
 		} else {
-			verticesWithJaccardValues.print();
+			edgesWithJaccardValues.print();
 		}
 
 		env.execute("Executing GSA Jaccard Similarity Measure");
@@ -101,13 +85,13 @@ public class GSAJaccardSimilarityMeasure implements ProgramDescription {
 	 * Each vertex will have a HashSet containing its neighbors as value.
 	 */
 	@SuppressWarnings("serial")
-	private static final class GatherNeighbors implements ReduceNeighborsFunction<Tuple2<HashSet<String>, HashMap<String, Double>>> {
+	private static final class GatherNeighbors implements ReduceNeighborsFunction<HashSet<String>> {
 
 		@Override
-		public Tuple2<HashSet<String>, HashMap<String, Double>> reduceNeighbors(Tuple2<HashSet<String>, HashMap<String, Double>> first,
-																			Tuple2<HashSet<String>, HashMap<String, Double>> second) {
-			first.f0.addAll(second.f0);
-			return new Tuple2<HashSet<String>, HashMap<String, Double>>(first.f0, new HashMap<String, Double>());
+		public HashSet<String> reduceNeighbors(HashSet<String> first,
+											   HashSet<String> second) {
+			first.addAll(second);
+			return new HashSet<String>(first);
 		}
 	}
 
@@ -124,36 +108,27 @@ public class GSAJaccardSimilarityMeasure implements ProgramDescription {
 	 */
 	@SuppressWarnings("serial")
 	private static final class ComputeJaccard implements
-			FlatMapFunction<Triplet<String, Tuple2<HashSet<String>, HashMap<String, Double>>, NullValue>,
-					Vertex<String, TreeMap<String, Double>>> {
+			MapFunction<Triplet<String, HashSet<String>, NullValue>, Edge<String, Double>> {
 
 		@Override
-		public void flatMap(Triplet<String, Tuple2<HashSet<String>, HashMap<String, Double>>, NullValue> triplet,
-							Collector<Vertex<String, TreeMap<String, Double>>> collector) throws Exception {
+		public Edge<String, Double> map(Triplet<String, HashSet<String>, NullValue> triplet) throws Exception {
 
-			Vertex<String, Tuple2<HashSet<String>, HashMap<String, Double>>> srcVertex = triplet.getSrcVertex();
-			Vertex<String, Tuple2<HashSet<String>, HashMap<String, Double>>> trgVertex = triplet.getTrgVertex();
-
-			TreeMap<String, Double> jaccard = new TreeMap<String, Double>();
-			TreeMap<String, Double> jaccardReversed = new TreeMap<String, Double>();
+			Vertex<String, HashSet<String>> srcVertex = triplet.getSrcVertex();
+			Vertex<String, HashSet<String>> trgVertex = triplet.getTrgVertex();
 
 			String x = srcVertex.getId();
 			String y = trgVertex.getId();
-			HashSet<String> neighborSetY = trgVertex.getValue().f0;
+			HashSet<String> neighborSetY = trgVertex.getValue();
 
-			double unionPlusIntersection = srcVertex.getValue().f0.size() + neighborSetY.size();
+			double unionPlusIntersection = srcVertex.getValue().size() + neighborSetY.size();
 			// within a HashSet, all elements are distinct
 			HashSet<String> unionSet = new HashSet<String>();
-			unionSet.addAll(srcVertex.getValue().f0);
+			unionSet.addAll(srcVertex.getValue());
 			unionSet.addAll(neighborSetY);
 			double union = unionSet.size();
 			double intersection = unionPlusIntersection - union;
 
-			jaccard.put(y, intersection / union);
-			jaccardReversed.put(x, intersection/union);
-
-			collector.collect(new Vertex<String, TreeMap<String, Double>>(srcVertex.getId(), jaccard));
-			collector.collect(new Vertex<String, TreeMap<String, Double>>(trgVertex.getId(), jaccardReversed));
+			return new Edge<String, Double>(x, y, intersection/union);
 		}
 	}
 
