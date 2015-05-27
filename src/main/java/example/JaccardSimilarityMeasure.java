@@ -27,15 +27,16 @@ public class JaccardSimilarityMeasure implements ProgramDescription {
 
 		DataSet<Edge<String, NullValue>> edges = getEdgesDataSet(env);
 
-		Graph<String, HashSet<String>, NullValue> graph = Graph.fromDataSet(edges, new MapFunction<String, HashSet<String>>() {
-			@Override
-			public HashSet<String> map(String s) throws Exception {
-				HashSet<String> neighborsHashSet = new HashSet<String>();
-				neighborsHashSet.add(s);
+		Graph<String, HashSet<String>, NullValue> graph = Graph.fromDataSet(edges,
+				new MapFunction<String, HashSet<String>>() {
+					@Override
+					public HashSet<String> map(String s) throws Exception {
+						HashSet<String> neighborsHashSet = new HashSet<String>();
+						neighborsHashSet.add(s);
 
-				return neighborsHashSet;
-			}
-		}, env);
+						return neighborsHashSet;
+					}
+				}, env);
 
 		// the result is stored within the vertex value
 		DataSet<Vertex<String, HashSet<String>>> verticesWithNeighbors =
