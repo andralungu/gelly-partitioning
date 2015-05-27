@@ -10,30 +10,30 @@ import java.util.List;
 
 public class JaccardSimilarityMeasureData {
 
-	public static final Integer MAX_ITERATIONS = 1;
+	public static final String EDGES = "1	2\n" + "1	7\n" + "2	7\n" + "3	4\n" + "3	7\n" + "4	7\n" +
+			"5	6\n" + "5	7\n" + "6	7\n" + "7	8";
 
-	public static final String EDGES = "1	2\n" + "1	3\n" + "1	4\n" + "1	5\n" + "2	3\n" + "2	4\n" +
-			"2	5\n" + "3	4\n" + "3	5\n" + "4	5";
+	public static DataSet<Edge<String, NullValue>> getDefaultEdgeDataSet(ExecutionEnvironment env) {
 
-	public static DataSet<Edge<Long, NullValue>> getDefaultEdgeDataSet(ExecutionEnvironment env) {
-
-		List<Edge<Long, NullValue>> edges = new ArrayList<>();
-		edges.add(new Edge<Long, NullValue>(1L, 2L, NullValue.getInstance()));
-		edges.add(new Edge<Long, NullValue>(1L, 3L, NullValue.getInstance()));
-		edges.add(new Edge<Long, NullValue>(1L, 4L, NullValue.getInstance()));
-		edges.add(new Edge<Long, NullValue>(1L, 5L, NullValue.getInstance()));
-		edges.add(new Edge<Long, NullValue>(2L, 3L, NullValue.getInstance()));
-		edges.add(new Edge<Long, NullValue>(2L, 4L, NullValue.getInstance()));
-		edges.add(new Edge<Long, NullValue>(2L, 5L, NullValue.getInstance()));
-		edges.add(new Edge<Long, NullValue>(3L, 4L, NullValue.getInstance()));
-		edges.add(new Edge<Long, NullValue>(3L, 5L, NullValue.getInstance()));
-		edges.add(new Edge<Long, NullValue>(4L, 5L, NullValue.getInstance()));
+		List<Edge<String, NullValue>> edges = new ArrayList<>();
+		edges.add(new Edge<String, NullValue>("1", "2", NullValue.getInstance()));
+		edges.add(new Edge<String, NullValue>("1", "7", NullValue.getInstance()));
+		edges.add(new Edge<String, NullValue>("2", "7", NullValue.getInstance()));
+		edges.add(new Edge<String, NullValue>("3", "4", NullValue.getInstance()));
+		edges.add(new Edge<String, NullValue>("3", "7", NullValue.getInstance()));
+		edges.add(new Edge<String, NullValue>("4", "7", NullValue.getInstance()));
+		edges.add(new Edge<String, NullValue>("5", "6", NullValue.getInstance()));
+		edges.add(new Edge<String, NullValue>("5", "7", NullValue.getInstance()));
+		edges.add(new Edge<String, NullValue>("6", "7", NullValue.getInstance()));
+		edges.add(new Edge<String, NullValue>("7", "8", NullValue.getInstance()));
 
 		return env.fromCollection(edges);
 	}
 
-	public static final String JACCARD_VERTICES = "1,{2=0.6, 3=0.6, 4=0.6, 5=0.6}\n" + "2,{1=0.6, 3=0.6, 4=0.6, 5=0.6}\n"
-			+"3,{1=0.6, 2=0.6, 4=0.6, 5=0.6}\n" + "4,{1=0.6, 2=0.6, 3=0.6, 5=0.6}\n" + "5,{1=0.6, 2=0.6, 3=0.6, 4=0.6}";
+	public static final String JACCARD_VERTICES = "1,{2=0.3333333333333333, 7=0.125}\n" + "2,{1=0.3333333333333333, 7=0.125}\n"
+			+"3,{4=0.3333333333333333, 7=0.125}\n" + "4,{3=0.3333333333333333, 7=0.125}\n" + "5,{6=0.3333333333333333, 7=0.125}\n"
+			+"6,{5=0.3333333333333333, 7=0.125}\n" + "7,{1=0.125, 2=0.125, 3=0.125, 4=0.125, 5=0.125, 6=0.125, 8=0.0}\n"
+			+"8,{7=0.0}";
 
 
 	private JaccardSimilarityMeasureData() {}
