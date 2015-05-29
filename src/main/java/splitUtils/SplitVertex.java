@@ -240,6 +240,38 @@ public class SplitVertex {
 		return regularVertices.union(splitVertices);
 	}
 
+	/**
+	 * Modify the edges to become associated with the initial vertices.
+	 *
+	 * @param splitEdges
+	 * @param <EV>
+	 * @return
+	 */
+	public static <EV extends Serializable> DataSet<Edge<String, EV>> cleanupEdges(DataSet<Edge<String, EV>> splitEdges) {
+
+		return splitEdges.map(new MapFunction<Edge<String, EV>, Edge<String, EV>>() {
+
+			@Override
+			public Edge<String, EV> map(Edge<String, EV> edge) throws Exception {
+				String srcId = edge.getSource();
+				String trgId = edge.getTarget();
+
+				int posUnderscoreSrc = srcId.indexOf("_");
+				int posUnderscoreTrg = trgId.indexOf("_");
+
+				if (posUnderscoreSrc > -1) {
+					srcId = srcId.substring(0, posUnderscoreSrc);
+				}
+
+				if(posUnderscoreTrg > -1) {
+					trgId = trgId.substring(0, posUnderscoreTrg);
+				}
+
+				return new Edge<String, EV>(srcId, trgId, edge.getValue());
+			}
+		});
+	}
+
 	private static final class  SplitSourceCoGroup<EV> implements
 			CoGroupFunction<Edge<String, EV>, Vertex<String, NullValue>, Edge<String, EV>> {
 
@@ -410,4 +442,5 @@ public class SplitVertex {
 					}
 				});
 	}
+
 }
