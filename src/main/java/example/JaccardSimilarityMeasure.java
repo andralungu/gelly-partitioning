@@ -52,11 +52,10 @@ public class JaccardSimilarityMeasure implements ProgramDescription {
 		// emit result
 		if (fileOutput) {
 			verticesWithJaccardValues.writeAsCsv(outputPath, "\n", ",");
+			env.execute("Executing Jaccard Similarity Measure");
 		} else {
 			verticesWithJaccardValues.print();
 		}
-
-		env.execute("Executing Jaccard Similarity Measure");
 	}
 
 

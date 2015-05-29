@@ -43,14 +43,15 @@ public class JaccardSimilarityMeasureITCase extends MultipleProgramsTestBase {
 
 	@Test
 	public void testJaccardSimilarityMeasureExample() throws Exception {
-		JaccardSimilarityMeasure.main(new String[]{edgesPath, resultPath});
-		//NodeSplittingJaccard.main(new String[]{edgesPath, resultPath, NodeSplittingData.ALPHA + "", NodeSplittingData.LEVEL + ""});
+		//JaccardSimilarityMeasure.main(new String[]{edgesPath, resultPath});
+		NodeSplittingJaccard.main(new String[]{edgesPath, resultPath, NodeSplittingData.ALPHA + "", NodeSplittingData.LEVEL + ""});
 		expected = JaccardSimilarityMeasureData.JACCARD_VERTICES;
 	}
 
 	@Test
 	public void testGSAJaccardSimilarityMeasure() throws Exception {
-		GSAJaccardSimilarityMeasure.main(new String[]{edgesPath, resultPath});
+		//GSAJaccardSimilarityMeasure.main(new String[]{edgesPath, resultPath});
+		NodeSplittingGSAJaccard.main(new String[]{edgesPath, resultPath, NodeSplittingData.ALPHA + "", NodeSplittingData.LEVEL +""});
 		expected = JaccardSimilarityMeasureData.JACCARD_EDGES;
 	}
 

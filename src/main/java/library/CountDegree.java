@@ -3,6 +3,7 @@ package library;
 import org.apache.flink.graph.Edge;
 import org.apache.flink.graph.Graph;
 import org.apache.flink.graph.GraphAlgorithm;
+import org.apache.flink.graph.Vertex;
 import org.apache.flink.graph.spargel.MessageIterator;
 import org.apache.flink.graph.spargel.MessagingFunction;
 import org.apache.flink.graph.spargel.VertexUpdateFunction;
@@ -30,7 +31,7 @@ public class CountDegree implements GraphAlgorithm<String, Long, NullValue> {
 	public static final class VertexUpdater extends VertexUpdateFunction<String, Long, Long> {
 
 		@Override
-		public void updateVertex(String vertexKey, Long vertexValue,
+		public void updateVertex(Vertex<String, Long> vertex,
 								 MessageIterator<Long> inMessages) throws Exception {
 
 			long degree = 0L;
@@ -50,8 +51,8 @@ public class CountDegree implements GraphAlgorithm<String, Long, NullValue> {
 	public static final class Messenger extends MessagingFunction<String, Long, Long, NullValue> {
 
 		@Override
-		public void sendMessages(String vertexKey, Long vertexValue) throws Exception {
-			for(Edge<String, NullValue> edge : getOutgoingEdges()) {
+		public void sendMessages(Vertex<String, Long> vertex) throws Exception {
+			for(Edge<String, NullValue> edge : getEdges()) {
 				sendMessageTo(edge.getTarget(), 1L);
 			}
 		}

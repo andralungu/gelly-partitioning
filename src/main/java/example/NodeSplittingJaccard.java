@@ -63,12 +63,12 @@ public class NodeSplittingJaccard implements ProgramDescription {
 
 		// propagate computed aggregated values to the split vertices
 		// avoid a second treeDeAggregate
-		DataSet<Vertex<String, Tuple2<String, HashSet<String>>>> updatedSplittedVertices =
+		DataSet<Vertex<String, Tuple2<String, HashSet<String>>>> updatedSplitVertices =
 				SplitVertex.propagateValuesToSplitVertices(graphWithSplitVertices.getVertices(),
 						aggregatedVertices);
 
 		Graph<String, Tuple2<String, HashSet<String>>, NullValue> graphWithNeighborsSplitVertices =
-				Graph.fromDataSet(updatedSplittedVertices, graphWithSplitVertices.getEdges(), env);
+				Graph.fromDataSet(updatedSplitVertices, graphWithSplitVertices.getEdges(), env);
 
 		DataSet<Vertex<String, TreeMap<String, Double>>> verticesWithJaccardValues = Jaccard
 				.getVerticesWithJaccardValuesForSplitNodes(graphWithNeighborsSplitVertices);
@@ -80,11 +80,10 @@ public class NodeSplittingJaccard implements ProgramDescription {
 		// emit result
 		if (fileOutput) {
 			aggregatedVerticesWithJaccardValues.writeAsCsv(outputPath, "\n", ",");
+			env.execute("Node Splitting Jaccard Similarity Measure");
 		} else {
 			aggregatedVerticesWithJaccardValues.print();
 		}
-
-		env.execute("Node Splitting Jaccard Similarity Measure");
 	}
 
 	@Override
