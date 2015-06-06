@@ -1,6 +1,6 @@
 package example;
 
-import library.Jaccard;
+import library.GSAJaccard;
 import org.apache.flink.api.common.ProgramDescription;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.java.DataSet;
@@ -13,13 +13,12 @@ import org.apache.flink.types.NullValue;
 import util.JaccardSimilarityMeasureData;
 
 import java.util.HashSet;
-import java.util.TreeMap;
 
-public class JaccardSimilarityMeasure implements ProgramDescription {
+public class GSAJaccardSimilarityMeasure implements ProgramDescription {
 
 	public static void main(String [] args) throws Exception {
 
-		if(!parseParameters(args)) {
+		if (!parseParameters(args)) {
 			return;
 		}
 
@@ -27,41 +26,49 @@ public class JaccardSimilarityMeasure implements ProgramDescription {
 
 		DataSet<Edge<String, NullValue>> edges = getEdgesDataSet(env);
 
+		// initialize the vertex values with hash sets containing their own ids
 		Graph<String, HashSet<String>, NullValue> graph = Graph.fromDataSet(edges,
 				new MapFunction<String, HashSet<String>>() {
-					@Override
-					public HashSet<String> map(String s) throws Exception {
-						HashSet<String> neighborsHashSet = new HashSet<String>();
-						neighborsHashSet.add(s);
 
-						return neighborsHashSet;
+					@Override
+					public HashSet<String> map(String id) throws Exception {
+						HashSet<String> neighbors = new HashSet<String>();
+						neighbors.add(id);
+
+						return new HashSet<String>(neighbors);
 					}
 				}, env);
 
-		// the result is stored within the vertex value
+		// Simulate GSA
+		// Gather: no-op in this case
+		// Sum: create the set of neighbors
+		DataSet<Tuple2<String, HashSet<String>>> computedNeighbors =
+				GSAJaccard.getVerticesWithNeighbors(graph);
+
+		// Apply: attach the computed values to the vertices
+		// joinWithVertices to update the node values
 		DataSet<Vertex<String, HashSet<String>>> verticesWithNeighbors =
-				Jaccard.getVerticesWithNeighbors(graph);
+				GSAJaccard.attachValuesToVertices(graph, computedNeighbors);
 
-		Graph<String, HashSet<String>, NullValue> undirectedGraphWithVertexValues =
-				Graph.fromDataSet(verticesWithNeighbors, edges, env).getUndirected();
+		Graph<String, HashSet<String>, NullValue> graphWithNeighbors =
+				Graph.fromDataSet(verticesWithNeighbors, edges, env);
 
-		// simulate a vertex centric iteration with groupReduceOnNeighbors
-		DataSet<Vertex<String, TreeMap<String, Double>>> verticesWithJaccardValues =
-				Jaccard.getVerticesWithJaccardValues(undirectedGraphWithVertexValues);
+		// Scatter: compare neighbors; compute Jaccard
+		DataSet<Edge<String, Double>> edgesWithJaccardValues =
+				GSAJaccard.computeJaccard(graphWithNeighbors);
 
 		// emit result
 		if (fileOutput) {
-			verticesWithJaccardValues.writeAsCsv(outputPath, "\n", ",");
-			env.execute("Executing Jaccard Similarity Measure");
+			edgesWithJaccardValues.writeAsCsv(outputPath, "\n", ",");
+			env.execute("Executing GSA Jaccard Similarity Measure");
 		} else {
-			verticesWithJaccardValues.print();
+			edgesWithJaccardValues.print();
 		}
 	}
 
-
 	@Override
 	public String getDescription() {
-		return "Vertex Jaccard Similarity Measure";
+		return "GSA Jaccard Similarity Measure";
 	}
 
 	// *************************************************************************
