@@ -2,6 +2,8 @@ package example;
 
 import org.apache.flink.api.common.ProgramDescription;
 import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.functions.GroupReduceFunction;
+import org.apache.flink.api.common.functions.JoinFunction;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.java.DataSet;
@@ -12,7 +14,6 @@ import org.apache.flink.graph.Edge;
 import org.apache.flink.graph.EdgeDirection;
 import org.apache.flink.graph.Graph;
 import org.apache.flink.graph.NeighborsFunctionWithVertexValue;
-import org.apache.flink.graph.Triplet;
 import org.apache.flink.graph.Vertex;
 import org.apache.flink.types.NullValue;
 import org.apache.flink.util.Collector;
@@ -37,22 +38,31 @@ public class TriangleCount implements ProgramDescription {
 
 		// simulate the first superstep
 		// select the neighbors with id greater than the current vertex's id
-		DataSet<Vertex<String, HashSet<String>>> verticesWithLowerNeighbors =
-				graph.groupReduceOnNeighbors(new GatherLowerNeighbors(), EdgeDirection.ALL);
+		DataSet<Vertex<String, String>> verticesWithHigherNeighbors =
+				graph.groupReduceOnNeighbors(new GatherHigherIdNeighbors(), EdgeDirection.ALL);
 
-		Graph<String, HashSet<String>, NullValue> graphWithVertexNeighbors = Graph.fromDataSet(verticesWithLowerNeighbors,
+		// then group them by id to attach the resulting sets to the vertices
+		DataSet<Vertex<String, HashSet<String>>> verticesWithNeighborHashSets =
+				verticesWithHigherNeighbors.groupBy(0).reduceGroup(new AttachNeighborIdsAsVertexValues());
+
+		Graph<String, HashSet<String>, NullValue> graphWithVertexNeighbors = Graph.fromDataSet(verticesWithNeighborHashSets,
 				edges, env);
 
 		// simulate the second superstep
 		// propagate each received "message" to neighbours with higher id
-		DataSet<Vertex<String, HashSet<String>>> verticesWithPropagatedValues =
+		DataSet<Vertex<String, String>> verticesWithPropagatedValues =
 				graphWithVertexNeighbors.groupReduceOnNeighbors(new PropagateNeighborValues(), EdgeDirection.ALL);
 
-		Graph<String, HashSet<String>, NullValue> graphWithPropagatedVertexValues = Graph.fromDataSet(verticesWithPropagatedValues,
-				edges, env);
+		// then group them by id to attach the resulting sets to the vertices
+		DataSet<Vertex<String, HashSet<String>>> verticesWithPropagatedHashSets =
+				verticesWithPropagatedValues.groupBy(0).reduceGroup(new AttachNeighborIdsAsVertexValues());
 
-		DataSet<Vertex<String, Integer>> verticesWithNumberOfTriangles = graphWithPropagatedVertexValues.getTriplets()
-				.map(new CountTriangles());
+		Graph<String, HashSet<String>, NullValue> graphWithPropagatedVertexValues = Graph.fromDataSet(verticesWithPropagatedHashSets,
+				edges, env).getUndirected();
+
+		DataSet<Vertex<String, Integer>> verticesWithNumberOfTriangles = graphWithPropagatedVertexValues.getVertices()
+				.join(graphWithPropagatedVertexValues.getEdges())
+				.where(0).equalTo(0).with(new CountTriangles());
 
 		DataSet<Tuple1<Integer>> numberOfTriangles =  verticesWithNumberOfTriangles
 				.flatMap(new FlatMapFunction<Vertex<String, Integer>, Tuple1<Integer>>() {
@@ -72,11 +82,10 @@ public class TriangleCount implements ProgramDescription {
 		// emit result
 		if(fileOutput) {
 			numberOfTriangles.writeAsCsv(outputPath, "\n", ",");
+			env.execute("Executing Triangle Count");
 		} else {
 			numberOfTriangles.print();
 		}
-
-		env.execute("Executing Triangle Count");
 	}
 
 	@Override
@@ -84,80 +93,89 @@ public class TriangleCount implements ProgramDescription {
 		return "Triangle Count Example";
 	}
 
-	/**
-	 * Each vertex will have the set of neighbors with id lower than its own id as value.
-	 */
 	@SuppressWarnings("serial")
-	private static final class GatherLowerNeighbors implements
-			NeighborsFunctionWithVertexValue<String, NullValue, NullValue, Vertex<String, HashSet<String>>> {
+	private static final class GatherHigherIdNeighbors implements
+			NeighborsFunctionWithVertexValue<String, NullValue, NullValue, Vertex<String, String>> {
 
 		@Override
 		public void iterateNeighbors(Vertex<String, NullValue> vertex,
 									 Iterable<Tuple2<Edge<String, NullValue>, Vertex<String, NullValue>>> neighbors,
-									 Collector<Vertex<String, HashSet<String>>> collector) throws Exception {
+									 Collector<Vertex<String, String>> collector) throws Exception {
 
-			HashSet<String> neighborsHashSet = new HashSet<String>();
 			Tuple2<Edge<String, NullValue>, Vertex<String, NullValue>> next = null;
 			Iterator<Tuple2<Edge<String, NullValue>, Vertex<String, NullValue>>> neighborsIterator =
 					neighbors.iterator();
 
 			while (neighborsIterator.hasNext()) {
 				next = neighborsIterator.next();
-				if(Long.parseLong(next.f1.getId()) < Long.parseLong(vertex.getId())) {
-					neighborsHashSet.add(next.f1.getId());
+				if(Long.parseLong(next.f1.getId()) > Long.parseLong(vertex.getId())) {
+					collector.collect(new Vertex<String, String>(next.f1.getId(), vertex.getId()));
 				}
 			}
+		}
+	}
 
-			collector.collect(new Vertex<String, HashSet<String>>(vertex.getId(), neighborsHashSet));
+	@SuppressWarnings("serial")
+	private static final class AttachNeighborIdsAsVertexValues implements GroupReduceFunction<Vertex<String, String>,
+			Vertex<String, HashSet<String>>> {
+
+		@Override
+		public void reduce(Iterable<Vertex<String, String>> vertices,
+						   Collector<Vertex<String, HashSet<String>>> collector) throws Exception {
+			Iterator<Vertex<String, String>> vertexIertator = vertices.iterator();
+			Vertex<String, String> next = null;
+			HashSet<String> neighbors = new HashSet<String>();
+			String id = null;
+
+			while (vertexIertator.hasNext()) {
+				next = vertexIertator.next();
+				id = next.getId();
+				neighbors.add(next.getValue());
+			}
+
+			collector.collect(new Vertex<String, HashSet<String>>(id, neighbors));
 		}
 	}
 
 	@SuppressWarnings("serial")
 	private static final class PropagateNeighborValues implements
-			NeighborsFunctionWithVertexValue<String, HashSet<String>, NullValue, Vertex<String, HashSet<String>>> {
+			NeighborsFunctionWithVertexValue<String, HashSet<String>, NullValue, Vertex<String, String>> {
 
 		@Override
 		public void iterateNeighbors(Vertex<String, HashSet<String>> vertex,
 									 Iterable<Tuple2<Edge<String, NullValue>, Vertex<String, HashSet<String>>>> neighbors,
-									 Collector<Vertex<String, HashSet<String>>> collector) throws Exception {
+									 Collector<Vertex<String, String>> collector) throws Exception {
 
-			HashSet<String> neighborsHashSet = new HashSet<String>();
 			Tuple2<Edge<String, NullValue>, Vertex<String, HashSet<String>>> next = null;
 			Iterator<Tuple2<Edge<String, NullValue>, Vertex<String, HashSet<String>>>> neighborsIterator = neighbors.iterator();
+			HashSet<String> vertexSet = vertex.getValue();
 
 			while (neighborsIterator.hasNext()) {
 				next = neighborsIterator.next();
-				if(Long.parseLong(next.f1.getId()) < Long.parseLong(vertex.getId())) {
-					neighborsHashSet.addAll(next.f1.getValue());
+				if(Long.parseLong(next.f1.getId()) > Long.parseLong(vertex.getId())) {
+					for(String key: vertexSet) {
+						collector.collect(new Vertex<String, String>(next.f1.getId(), key));
+					}
 				}
 			}
-
-			collector.collect(new Vertex<String, HashSet<String>>(vertex.getId(), neighborsHashSet));
 		}
 	}
 
 	@SuppressWarnings("serial")
 	private static final class CountTriangles implements
-			MapFunction<Triplet<String, HashSet<String>, NullValue>, Vertex<String, Integer>> {
+			JoinFunction<Vertex<String, HashSet<String>>, Edge<String, NullValue>, Vertex<String, Integer>> {
 
 		@Override
-		public Vertex<String, Integer> map(Triplet<String, HashSet<String>, NullValue> triplet) throws Exception {
 
+		public Vertex<String, Integer> join(Vertex<String, HashSet<String>> vertex,
+											Edge<String, NullValue> edge) throws Exception {
 			int numberOfTriangles = 0;
-			Vertex<String, HashSet<String>> srcVertex = triplet.getSrcVertex();
-			Vertex<String, HashSet<String>> trgVertex = triplet.getTrgVertex();
 
-			if(srcVertex.getValue().contains(trgVertex.getId())) {
+			if(vertex.getValue().contains(edge.getTarget())) {
 				numberOfTriangles++;
-				return new Vertex<String, Integer>(srcVertex.getId(), numberOfTriangles);
 			}
 
-			if(triplet.getTrgVertex().getValue().contains(triplet.getSrcVertex().getId())) {
-				numberOfTriangles++;
-				return new Vertex<String, Integer>(triplet.getTrgVertex().getId(), numberOfTriangles);
-			}
-
-			return new Vertex<String, Integer>(srcVertex.getId(), numberOfTriangles);
+			return new Vertex<String, Integer>(vertex.getId(), numberOfTriangles);
 		}
 	}
 
