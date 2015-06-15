@@ -44,6 +44,12 @@ public class TriangleCountITCase extends MultipleProgramsTestBase {
 		expected = TriangleCountData.RESULTED_NUMBER_OF_TRIANGLES;
 	}
 
+	@Test
+	public void testGSATriangleCountExample() throws Exception {
+		GSATriangleCount.main(new String[]{edgesPath, resultPath});
+		expected = TriangleCountData.RESULTED_NUMBER_OF_TRIANGLES;
+	}
+
 	@After
 	public void after() throws Exception {
 		compareResultsByLinesInMemory(expected, resultPath);
