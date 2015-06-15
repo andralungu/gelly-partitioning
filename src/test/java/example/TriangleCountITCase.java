@@ -10,6 +10,7 @@ import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.apache.flink.test.util.MultipleProgramsTestBase;
+import util.NodeSplittingData;
 import util.TriangleCountData;
 
 import java.io.File;
@@ -40,7 +41,10 @@ public class TriangleCountITCase extends MultipleProgramsTestBase {
 
 	@Test
 	public void testTriangleCountExample() throws Exception {
-		TriangleCount.main(new String[]{edgesPath, resultPath});
+		// TriangleCount.main(new String[]{edgesPath, resultPath});
+		NodeSplittingTriangleCount.main(new String[] {edgesPath, resultPath, NodeSplittingData.ALPHA + "",
+				NodeSplittingData.LEVEL + "",
+				NodeSplittingData.THRESHOLD + ""});
 		expected = TriangleCountData.RESULTED_NUMBER_OF_TRIANGLES;
 	}
 
