@@ -66,7 +66,7 @@ public class Jaccard {
 
 		@Override
 		public void iterateNeighbors(Iterable<Tuple3<String, Edge<String, NullValue>, Vertex<String, HashSet<String>>>> neighbors,
-									 Collector<Vertex<String,HashSet<String>>> collector) throws Exception {
+									 Collector<Vertex<String, HashSet<String>>> collector) throws Exception {
 
 			HashSet<String> neighborsHashSet = new HashSet<String>();
 			Tuple3<String, Edge<String, NullValue>, Vertex<String, HashSet<String>>> next = null;
@@ -81,7 +81,7 @@ public class Jaccard {
 			}
 
 			String messages = "Vertex key " + next.f0 + " number of messages " + neighborCount + "\n";
-			Files.append(messages, tempFile, Charsets.UTF_8);
+			//Files.append(messages, tempFile, Charsets.UTF_8);
 
 			collector.collect(new Vertex<String, HashSet<String>>(next.f0, neighborsHashSet));
 		}
@@ -119,7 +119,7 @@ public class Jaccard {
 			}
 
 			String messages = "Vertex key " + next.f0 + " number of messages " + neighborCount + "\n";
-			Files.append(messages, tempFile, Charsets.UTF_8);
+			//Files.append(messages, tempFile, Charsets.UTF_8);
 
 			collector.collect(new Vertex<String, HashSet<String>>(next.f0, neighborsHashSet));
 		}
@@ -182,7 +182,7 @@ public class Jaccard {
 			}
 
 			String messages = "Vertex key " + vertex.getId() + " number of messages " + neighborCount + "\n";
-			Files.append(messages, tempFile, Charsets.UTF_8);
+			//Files.append(messages, tempFile, Charsets.UTF_8);
 
 			collector.collect(new Vertex<String, TreeMap<String, Double>>(vertex.getId(), jaccard));
 		}
@@ -236,7 +236,7 @@ public class Jaccard {
 			}
 
 			String messages = "Vertex key " + vertex.getId() + " number of messages " + neighborCount + "\n";
-			Files.append(messages, tempFile, Charsets.UTF_8);
+			//Files.append(messages, tempFile, Charsets.UTF_8);
 
 			collector.collect(new Vertex<String, TreeMap<String, Double>>(vertex.getId(), jaccard));
 		}

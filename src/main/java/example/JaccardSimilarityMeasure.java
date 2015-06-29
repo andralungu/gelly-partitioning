@@ -31,10 +31,10 @@ public class JaccardSimilarityMeasure implements ProgramDescription {
 				new MapFunction<String, HashSet<String>>() {
 					@Override
 					public HashSet<String> map(String s) throws Exception {
-						HashSet<String> neighborsHashSet = new HashSet<String>();
-						neighborsHashSet.add(s);
+						HashSet<String> neighbors = new HashSet<String>();
+						neighbors.add(s);
 
-						return neighborsHashSet;
+						return neighbors;
 					}
 				}, env);
 
