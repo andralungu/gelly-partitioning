@@ -1,6 +1,9 @@
 package example;
 
+import com.google.common.base.Charsets;
+import com.google.common.io.Files;
 import org.apache.flink.api.common.ProgramDescription;
+import org.apache.flink.api.common.functions.FlatJoinFunction;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.GroupReduceFunction;
 import org.apache.flink.api.common.functions.JoinFunction;
@@ -9,6 +12,7 @@ import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.aggregation.Aggregations;
+import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple1;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.graph.Edge;
@@ -19,11 +23,13 @@ import org.apache.flink.graph.Vertex;
 import org.apache.flink.types.NullValue;
 import org.apache.flink.util.Collector;
 import splitUtils.SplitVertex;
+import util.DummyGraph;
 import util.NodeSplittingData;
 import util.TriangleCountData;
 
-import java.util.HashSet;
+import java.io.File;
 import java.util.Iterator;
+import java.util.TreeMap;
 
 public class NodeSplittingTriangleCount implements ProgramDescription {
 
@@ -37,7 +43,12 @@ public class NodeSplittingTriangleCount implements ProgramDescription {
 
 		DataSet<Edge<String, NullValue>> edges = getEdgesDataSet(env);
 
-		Graph<String, NullValue, NullValue> graph = Graph.fromDataSet(edges, env);
+		Graph<String, NullValue, NullValue> graph = Graph.fromDataSet(edges, env).getUndirected();
+
+//		messagesTempFile = File.createTempFile("message_monitoring", ".txt");
+//		System.out.println("Messages file " + messagesTempFile.getAbsolutePath());
+//		computationTempFile = File.createTempFile("computation_monitoring", ".txt");
+//		System.out.println("Computation file" + computationTempFile.getAbsolutePath());
 
 		long numVertices = graph.numberOfVertices();
 
@@ -45,7 +56,7 @@ public class NodeSplittingTriangleCount implements ProgramDescription {
 
 		double avg = getAverageDegree(numVertices, verticesWithDegrees);
 
-		final double xMin = threshold * avg;
+		final double xMin = threshold;
 
 		DataSet<Vertex<String, NullValue>> skewedVertices = SplitVertex.determineSkewedVertices(xMin,
 				verticesWithDegrees);
@@ -53,71 +64,86 @@ public class NodeSplittingTriangleCount implements ProgramDescription {
 		Graph<String, Tuple2<String, NullValue>, NullValue> graphWithSplitVertices =
 				SplitVertex.treeDeAggregate(skewedVertices, graph, alpha, level, xMin);
 
+		DummyGraph<String, Tuple2<String, NullValue>, NullValue> dummyGraphWithSplitVertices =
+				DummyGraph.fromDataSet(graphWithSplitVertices.getVertices(),
+						graphWithSplitVertices.getEdges(), env);
+
 		// simulate the first superstep
 		// select the neighbors with id greater than the current vertex's id
 		DataSet<Vertex<String, Tuple2<String, String>>> verticesWithHigherNeighbors =
-				graphWithSplitVertices.groupReduceOnNeighbors(new GatherHigherIdNeighbors(), EdgeDirection.ALL);
+				dummyGraphWithSplitVertices.groupReduceOnNeighbors(new GatherHigherIdNeighbors(), EdgeDirection.IN);
 
 		// then group them by id to attach the resulting sets to the vertices
-		DataSet<Vertex<String, Tuple2<String, HashSet<String>>>> verticesWithNeighborHashSets =
+		DataSet<Vertex<String, Tuple2<String, TreeMap<String, Integer>>>> verticesWithNeighborHashSets =
 				verticesWithHigherNeighbors.groupBy(0).reduceGroup(new AttachNeighborIdsAsVertexValues());
 
-		Graph<String, Tuple2<String, HashSet<String>>, NullValue> graphWithVertexNeighbors = Graph.fromDataSet(verticesWithNeighborHashSets,
-				graphWithSplitVertices.getEdges(), env);
+		// you want to assign a value to the vertices with no neighbors as well
+		DummyGraph<String, Tuple2<String, TreeMap<String, Integer>>, NullValue> graphWithInitializedVertexNeighbors =
+				dummyGraphWithSplitVertices
+						.mapVertices(new MapFunction<Vertex<String, Tuple2<String, NullValue>>,
+								Tuple2<String, TreeMap<String, Integer>>>() {
 
-		DataSet<Vertex<String, HashSet<String>>> aggregatedVertices =
-				SplitVertex.treeAggregate(verticesWithNeighborHashSets, level, new Aggregate())
-				.map(new MapFunction<Vertex<String, Tuple2<String, HashSet<String>>>, Vertex<String, HashSet<String>>>() {
+							@Override
+							public Tuple2<String, TreeMap<String, Integer>> map(Vertex<String, Tuple2<String, NullValue>> vertex) throws Exception {
+								return new Tuple2<String, TreeMap<String, Integer>>(vertex.getValue().f0, new TreeMap<String, Integer>());
+							}
+						});
+
+		DummyGraph<String, Tuple2<String, TreeMap<String, Integer>>, NullValue> dummyGraphWithVertexNeighbors = graphWithInitializedVertexNeighbors
+				.joinWithVertices(verticesWithNeighborHashSets, new MapFunction<Vertex<Tuple2<String, TreeMap<String, Integer>>,
+						Tuple2<String, TreeMap<String, Integer>>>, Tuple2<String, TreeMap<String, Integer>>>() {
 					@Override
-					public Vertex<String, HashSet<String>> map(Vertex<String, Tuple2<String, HashSet<String>>> vertex) throws Exception {
-						return new Vertex<String, HashSet<String>>(vertex.getId(), vertex.getValue().f1);
+					public Tuple2<String, TreeMap<String, Integer>> map(Vertex<Tuple2<String, TreeMap<String, Integer>>,
+							Tuple2<String, TreeMap<String, Integer>>> vertex) throws Exception {
+						return vertex.getValue();
+					}
+				});
+
+		Graph<String, Tuple2<String, TreeMap<String, Integer>>, NullValue> graphWithVertexNeighbors =
+				Graph.fromDataSet(dummyGraphWithVertexNeighbors.getVertices(), graphWithSplitVertices.getEdges(), env);
+
+		DataSet<Vertex<String, TreeMap<String, Integer>>> aggregatedVertices =
+				SplitVertex.treeAggregate(verticesWithNeighborHashSets, level, new Aggregate())
+				.map(new MapFunction<Vertex<String, Tuple2<String, TreeMap<String, Integer>>>, Vertex<String, TreeMap<String, Integer>>>() {
+					@Override
+					public Vertex<String, TreeMap<String, Integer>> map(Vertex<String, Tuple2<String, TreeMap<String, Integer>>> vertex) throws Exception {
+						return new Vertex<String, TreeMap<String, Integer>>(vertex.getId(), vertex.getValue().f1);
 					}
 				});
 
 		// propagate the aggregated values to split vertices
-		DataSet<Vertex<String, Tuple2<String, HashSet<String>>>> updatedSplitVertices =
+		DataSet<Vertex<String, Tuple2<String, TreeMap<String, Integer>>>> updatedSplitVertices =
 				SplitVertex.propagateValuesToSplitVertices(graphWithVertexNeighbors.getVertices(),
 						aggregatedVertices);
 
-		Graph<String, Tuple2<String, HashSet<String>>, NullValue> graphAfterFirstSuperstep =
+		Graph<String, Tuple2<String, TreeMap<String, Integer>>, NullValue> graphAfterFirstSuperstep =
 				Graph.fromDataSet(updatedSplitVertices, graphWithVertexNeighbors.getEdges(), env);
+
+		DummyGraph<String, Tuple2<String, TreeMap<String, Integer>>, NullValue> dummyGraphAfterFirstSuperStep =
+				DummyGraph.fromDataSet(graphAfterFirstSuperstep.getVertices(), graphAfterFirstSuperstep.getEdges(), env);
 
 		// simulate the second superstep
 		// propagate each received "message" to neighbours with higher id
 		DataSet<Vertex<String, Tuple2<String, String>>> verticesWithPropagatedValues =
-				graphAfterFirstSuperstep.groupReduceOnNeighbors(new PropagateNeighborValues(), EdgeDirection.ALL);
+				dummyGraphAfterFirstSuperStep.groupReduceOnNeighbors(new PropagateNeighborValues(), EdgeDirection.IN);
 
-		// then group them by id to attach the resulting sets to the vertices
-		DataSet<Vertex<String, Tuple2<String, HashSet<String>>>> verticesWithPropagatedHashSets =
-				verticesWithPropagatedValues.groupBy(0).reduceGroup(new AttachNeighborIdsAsVertexValues());
+		DataSet<Vertex<String, Tuple2<String, TreeMap<String, Integer>>>> verticesWithPropagatedTreeMaps = verticesWithPropagatedValues
+				.groupBy(0).reduceGroup(new AttachNeighborIdsAsVertexValues());
 
-		// aggregate vertices
-		DataSet<Vertex<String, Tuple2<String, HashSet<String>>>> aggregatedVerticesSuperstepTwo =
-				SplitVertex.treeAggregate(verticesWithPropagatedHashSets, level,
-						new Aggregate());
+		DataSet<Vertex<String, TreeMap<String, Integer>>> aggregatedVerticesWithPropagatedTreeMaps =
+				SplitVertex.treeAggregate(verticesWithPropagatedTreeMaps, level, new Aggregate())
+						.map(new MapFunction<Vertex<String, Tuple2<String, TreeMap<String, Integer>>>, Vertex<String, TreeMap<String, Integer>>>() {
+							@Override
+							public Vertex<String, TreeMap<String, Integer>> map(Vertex<String, Tuple2<String, TreeMap<String, Integer>>> vertex) throws Exception {
+								return new Vertex<String, TreeMap<String, Integer>>(vertex.getId(), vertex.getValue().f1);
+							}
+						});
 
-		Graph<String, Tuple2<String, HashSet<String>>, NullValue> graphWithPropagatedVertexValues =
-				Graph.fromDataSet(aggregatedVerticesSuperstepTwo,
-				edges, env).getUndirected();
-
-		DataSet<Vertex<String, Integer>> verticesWithNumberOfTriangles = graphWithPropagatedVertexValues.getVertices()
-				.map(new MapFunction<Vertex<String, Tuple2<String, HashSet<String>>>, Vertex<String, HashSet<String>>>() {
-					@Override
-					public Vertex<String, HashSet<String>> map(Vertex<String, Tuple2<String, HashSet<String>>> vertex) throws Exception {
-						return new Vertex<String, HashSet<String>>(vertex.getId(), vertex.getValue().f1);
-					}
-				})
-				.join(graphWithPropagatedVertexValues.getEdges())
-				.where(0).equalTo(0).with(new CountTriangles());
-
-		DataSet<Tuple1<Integer>> numberOfTriangles =  verticesWithNumberOfTriangles
-				.flatMap(new FlatMapFunction<Vertex<String, Integer>, Tuple1<Integer>>() {
-
-					@Override
-					public void flatMap(Vertex<String, Integer> vertex, Collector<Tuple1<Integer>> collector) throws Exception {
-						collector.collect(new Tuple1<Integer>(vertex.getValue()));
-					}
-				}).reduce(new ReduceFunction<Tuple1<Integer>>() {
+		// vertices are split; use the tags as keys instead
+		DataSet<Tuple1<Integer>> numberOfTriangles = aggregatedVerticesWithPropagatedTreeMaps
+				.join(graph.getEdges())
+				.where(0).equalTo(0).with(new CountTriangles())
+				.reduce(new ReduceFunction<Tuple1<Integer>>() {
 
 					@Override
 					public Tuple1<Integer> reduce(Tuple1<Integer> firstTuple, Tuple1<Integer> secondTuple) throws Exception {
@@ -152,28 +178,43 @@ public class NodeSplittingTriangleCount implements ProgramDescription {
 			Tuple2<Edge<String, NullValue>, Vertex<String, Tuple2<String, NullValue>>> next = null;
 			Iterator<Tuple2<Edge<String, NullValue>, Vertex<String, Tuple2<String, NullValue>>>> neighborsIterator =
 					neighbors.iterator();
+			long neighborCount = 0;
+			long start = System.currentTimeMillis();
+			String vertexKey = null;
 
 			while (neighborsIterator.hasNext()) {
 				next = neighborsIterator.next();
 				if(Long.parseLong(next.f1.getValue().f0) > Long.parseLong(vertex.getValue().f0)) {
-					collector.collect(new Vertex<String, Tuple2<String, String>>(next.f1.getId(),
+					neighborCount ++;
+					vertexKey = next.f1.getId();
+
+					collector.collect(new Vertex<String, Tuple2<String, String>>(vertexKey,
 							new Tuple2<String, String>(next.f1.getValue().f0, vertex.getValue().f0)));
 				}
 			}
+
+			String messages = "Vertex key " + vertexKey + " number of messages " + neighborCount + "\n";
+			//Files.append(messages, messagesTempFile, Charsets.UTF_8);
+
+			long stop = System.currentTimeMillis();
+			long time = stop - start;
+			String updateTimeElapsed = "Vertex key " + vertexKey +
+					" time elapsed computation " + time + "\n";
+			//Files.append(updateTimeElapsed, computationTempFile, Charsets.UTF_8);
 		}
 	}
 
 	@SuppressWarnings("serial")
 	private static final class AttachNeighborIdsAsVertexValues implements GroupReduceFunction<Vertex<String, Tuple2<String, String>>,
-			Vertex<String, Tuple2<String, HashSet<String>>>> {
+			Vertex<String, Tuple2<String, TreeMap<String, Integer>>>> {
 
 		@Override
 		public void reduce(Iterable<Vertex<String, Tuple2<String, String>>> vertices,
-						   Collector<Vertex<String, Tuple2<String, HashSet<String>>>> collector) throws Exception {
+						   Collector<Vertex<String, Tuple2<String, TreeMap<String, Integer>>>> collector) throws Exception {
 
 			Iterator<Vertex<String, Tuple2<String, String>>> vertexIertator = vertices.iterator();
 			Vertex<String, Tuple2<String, String>> next = null;
-			HashSet<String> neighbors = new HashSet<String>();
+			TreeMap<String, Integer> neighbors = new TreeMap<String, Integer>();
 			String id = null;
 			String tag = null;
 
@@ -181,25 +222,32 @@ public class NodeSplittingTriangleCount implements ProgramDescription {
 				next = vertexIertator.next();
 				id = next.getId();
 				tag = next.getValue().f0;
-				neighbors.add(next.getValue().f1);
+
+				// neighbor key already exists
+				Integer value = neighbors.get(next.getValue().f1);
+				if(value != null) {
+					neighbors.put(next.getValue().f1, value + 1);
+				} else {
+					neighbors.put(next.getValue().f1, 1);
+				}
 			}
 
-			collector.collect(new Vertex<String, Tuple2<String, HashSet<String>>>(id,
-					new Tuple2<String, HashSet<String>>(tag, neighbors)));
+			collector.collect(new Vertex<String, Tuple2<String, TreeMap<String, Integer>>>(id,
+					new Tuple2<String, TreeMap<String, Integer>>(tag, neighbors)));
 		}
 	}
 
 	@SuppressWarnings("serial")
 	private static final class Aggregate implements
-			GroupReduceFunction<Vertex<String, Tuple2<String, HashSet<String>>>, Vertex<String, Tuple2<String, HashSet<String>>>> {
+			GroupReduceFunction<Vertex<String, Tuple2<String, TreeMap<String, Integer>>>, Vertex<String, Tuple2<String, TreeMap<String, Integer>>>> {
 
 		@Override
-		public void reduce(Iterable<Vertex<String, Tuple2<String, HashSet<String>>>> vertex,
-						   Collector<Vertex<String, Tuple2<String, HashSet<String>>>> collector) throws Exception {
+		public void reduce(Iterable<Vertex<String, Tuple2<String, TreeMap<String, Integer>>>> vertex,
+						   Collector<Vertex<String, Tuple2<String, TreeMap<String, Integer>>>> collector) throws Exception {
 
-			Iterator<Vertex<String, Tuple2<String, HashSet<String>>>> vertexIterator = vertex.iterator();
-			Vertex<String, Tuple2<String, HashSet<String>>> next = null;
-			HashSet<String> result = new HashSet<String>();
+			Iterator<Vertex<String, Tuple2<String, TreeMap<String, Integer>>>> vertexIterator = vertex.iterator();
+			Vertex<String, Tuple2<String, TreeMap<String, Integer>>> next = null;
+			TreeMap<String, Integer> result = new TreeMap<String, Integer>();
 			String id = null;
 			String tag = null;
 
@@ -207,55 +255,74 @@ public class NodeSplittingTriangleCount implements ProgramDescription {
 				next = vertexIterator.next();
 				id = next.getId();
 				tag = next.getValue().f0;
-				result.addAll(next.getValue().f1);
+				TreeMap<String, Integer> current = next.getValue().f1;
+				for (String key : current.keySet()) {
+					// neighbor key already exists
+					Integer value = result.get(key);
+					if (value != null) {
+						result.put(key, value + current.get(key));
+					} else {
+						result.put(key, current.get(key));
+					}
+				}
 			}
 
-			collector.collect(new Vertex<String, Tuple2<String, HashSet<String>>>(id,
-					new Tuple2<String, HashSet<String>>(tag, result)));
+			collector.collect(new Vertex<String, Tuple2<String, TreeMap<String, Integer>>>(id,
+					new Tuple2<String, TreeMap<String, Integer>>(tag, result)));
 		}
 	}
 
 	@SuppressWarnings("serial")
 	private static final class PropagateNeighborValues implements
-			NeighborsFunctionWithVertexValue<String, Tuple2<String, HashSet<String>>, NullValue,
+			NeighborsFunctionWithVertexValue<String, Tuple2<String, TreeMap<String, Integer>>, NullValue,
 					Vertex<String, Tuple2<String, String>>> {
 
 		@Override
-		public void iterateNeighbors(Vertex<String, Tuple2<String, HashSet<String>>> vertex,
-									 Iterable<Tuple2<Edge<String, NullValue>, Vertex<String, Tuple2<String, HashSet<String>>>>> neighbors,
+		public void iterateNeighbors(Vertex<String, Tuple2<String, TreeMap<String, Integer>>> vertex,
+									 Iterable<Tuple2<Edge<String, NullValue>, Vertex<String, Tuple2<String, TreeMap<String, Integer>>>>> neighbors,
 									 Collector<Vertex<String, Tuple2<String, String>>> collector) throws Exception {
 
-			Tuple2<Edge<String, NullValue>, Vertex<String, Tuple2<String, HashSet<String>>>> next = null;
-			Iterator<Tuple2<Edge<String, NullValue>, Vertex<String, Tuple2<String, HashSet<String>>>>> neighborsIterator = neighbors.iterator();
-			HashSet<String> vertexSet = vertex.getValue().f1;
+			Tuple2<Edge<String, NullValue>, Vertex<String, Tuple2<String, TreeMap<String, Integer>>>> next = null;
+			Iterator<Tuple2<Edge<String, NullValue>, Vertex<String, Tuple2<String, TreeMap<String, Integer>>>>> neighborsIterator = neighbors.iterator();
+			TreeMap<String, Integer> vertexSet = vertex.getValue().f1;
+			long neighborCount = 0;
+			long start = System.currentTimeMillis();
+			String vertexKey = null;
 
 			while (neighborsIterator.hasNext()) {
 				next = neighborsIterator.next();
 				if(Long.parseLong(next.f1.getValue().f0) > Long.parseLong(vertex.getValue().f0)) {
-					for(String key: vertexSet) {
-						collector.collect(new Vertex<String, Tuple2<String, String>>(next.f1.getId(),
+					for(String key: vertexSet.keySet()) {
+						neighborCount++;
+						vertexKey = next.f1.getId();
+
+						collector.collect(new Vertex<String, Tuple2<String, String>>(vertexKey,
 								new Tuple2<String, String>(next.f1.getValue().f0, key)));
 					}
 				}
 			}
+
+			String messages = "Vertex key " + vertexKey + " number of messages " + neighborCount + "\n";
+			//Files.append(messages, messagesTempFile, Charsets.UTF_8);
+
+			long stop = System.currentTimeMillis();
+			long time = stop - start;
+			String updateTimeElapsed = "Vertex key " + vertexKey +
+					" time elapsed computation " + time + "\n";
+			//Files.append(updateTimeElapsed, computationTempFile, Charsets.UTF_8);
 		}
 	}
 
 	@SuppressWarnings("serial")
 	private static final class CountTriangles implements
-			JoinFunction<Vertex<String, HashSet<String>>, Edge<String, NullValue>, Vertex<String, Integer>> {
+			FlatJoinFunction<Vertex<String, TreeMap<String, Integer>>, Edge<String, NullValue>, Tuple1<Integer>> {
 
 		@Override
-
-		public Vertex<String, Integer> join(Vertex<String, HashSet<String>> vertex,
-											Edge<String, NullValue> edge) throws Exception {
-			int numberOfTriangles = 0;
-
-			if(vertex.getValue().contains(edge.getTarget())) {
-				numberOfTriangles++;
+		public void join(Vertex<String, TreeMap<String, Integer>> vertex,
+						 Edge<String, NullValue> edge, Collector<Tuple1<Integer>> collector) throws Exception {
+			if (vertex.getValue().get(edge.getTarget()) != null) {
+				collector.collect(new Tuple1<Integer>(vertex.getValue().get(edge.getTarget())));
 			}
-
-			return new Vertex<String, Integer>(vertex.getId(), numberOfTriangles);
 		}
 	}
 
@@ -300,6 +367,9 @@ public class NodeSplittingTriangleCount implements ProgramDescription {
 	private static Integer alpha = NodeSplittingData.ALPHA;
 	private static Integer level = NodeSplittingData.LEVEL;
 	private static Integer threshold = NodeSplittingData.THRESHOLD;
+
+	private static File messagesTempFile;
+	private static File computationTempFile;
 
 	private static boolean parseParameters(String [] args) {
 		if(args.length > 0) {

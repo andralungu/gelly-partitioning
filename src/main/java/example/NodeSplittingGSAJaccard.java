@@ -28,7 +28,6 @@ public class NodeSplittingGSAJaccard implements ProgramDescription {
 		}
 
 		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
-		env.getConfig().disableSysoutLogging();
 
 		DataSet<Edge<String, NullValue>> edges = getEdgesDataSet(env);
 
@@ -47,7 +46,7 @@ public class NodeSplittingGSAJaccard implements ProgramDescription {
 
 		DataSet<Tuple2<String, Long>> verticesWithDegrees = graph.getDegrees();
 
-		final double xMin = SplitVertex.retrieveXMin(verticesWithDegrees);
+		final double xMin = threshold;
 
 		DataSet<Vertex<String, NullValue>> skewedVertices = SplitVertex.determineSkewedVertices(xMin,
 				verticesWithDegrees);
@@ -154,11 +153,12 @@ public class NodeSplittingGSAJaccard implements ProgramDescription {
 
 	private static Integer alpha = NodeSplittingData.ALPHA;
 	private static Integer level = NodeSplittingData.LEVEL;
+	private static Integer threshold = NodeSplittingData.THRESHOLD;
 
 	private static boolean parseParameters(String [] args) {
 		if(args.length > 0) {
-			if(args.length != 4) {
-				System.err.println("Usage JaccardSimilarityMeasure <edge path> <output path> <alpha> <level>");
+			if(args.length != 5) {
+				System.err.println("Usage JaccardSimilarityMeasure <edge path> <output path> <alpha> <level> <threshold>");
 				return false;
 			}
 
@@ -167,10 +167,11 @@ public class NodeSplittingGSAJaccard implements ProgramDescription {
 			outputPath = args[1];
 			alpha = Integer.parseInt(args[2]);
 			level = Integer.parseInt(args[3]);
+			threshold = Integer.parseInt(args[4]);
 		} else {
 			System.out.println("Executing JaccardSimilarityMeasure example with default parameters and built-in default data.");
 			System.out.println("Provide parameters to read input data from files.");
-			System.out.println("Usage JaccardSimilarityMeasure <edge path> <output path> <alpha> <level>");
+			System.out.println("Usage JaccardSimilarityMeasure <edge path> <output path> <alpha> <level> <threshold>");
 		}
 
 		return true;
