@@ -10,6 +10,7 @@ import org.apache.flink.graph.ReduceNeighborsFunction;
 import org.apache.flink.graph.Triplet;
 import org.apache.flink.graph.Vertex;
 import org.apache.flink.types.NullValue;
+import util.DummyGraph;
 
 import java.util.HashSet;
 
@@ -62,7 +63,7 @@ public class GSAJaccard {
 	}
 
 	public static DataSet<Edge<String, Double>> computeJaccardForSplitVertices
-			(Graph<String, Tuple2<String, HashSet<String>>, NullValue> graphWithNeighbors) {
+			(DummyGraph<String, Tuple2<String, HashSet<String>>, NullValue> graphWithNeighbors) {
 
 		return graphWithNeighbors.getTriplets().map(new ComputeJaccardForSplitVertices());
 	}

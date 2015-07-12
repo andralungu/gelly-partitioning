@@ -86,7 +86,7 @@ public class CommunityDetectionExample implements ProgramDescription {
 
 			return env.readCsvFile(edgeInputPath)
 					.ignoreComments("#")
-					.fieldDelimiter("\t")
+					.fieldDelimiter(" ")
 					.lineDelimiter("\n")
 					.types(String.class, String.class, Double.class)
 					.map(new Tuple3ToEdgeMap<String, Double>());

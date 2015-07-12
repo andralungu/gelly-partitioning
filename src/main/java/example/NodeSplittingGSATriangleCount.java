@@ -279,19 +279,24 @@ public class NodeSplittingGSATriangleCount implements ProgramDescription {
 
 	private static boolean parseParameters(String [] args) {
 		if(args.length > 0) {
-			if(args.length != 2) {
-				System.err.println("Usage NodeSplittingGSATriangleCount <edge path> <output path>");
+			if(args.length != 5) {
+				System.err.println("Usage NodeSplittingGSATriangleCount <edge path> <output path> <alpha> <level>" +
+						"<threshold>");
 				return false;
 			}
 
 			fileOutput = true;
 			edgeInputPath = args[0];
 			outputPath = args[1];
+			alpha = Integer.parseInt(args[2]);
+			level = Integer.parseInt(args[3]);
+			threshold = Integer.parseInt(args[4]);
 
 		} else {
 			System.out.println("Executing NodeSplittingGSATriangleCount example with default parameters and built-in default data.");
 			System.out.println("Provide parameters to read input data from files.");
-			System.out.println("Usage NodeSplittingGSATriangleCount <edge path> <output path>");
+			System.out.println("Usage NodeSplittingGSATriangleCount <edge path> <output path> <alpha> <level> " +
+					"<threshold>");
 		}
 
 		return true;
@@ -301,7 +306,7 @@ public class NodeSplittingGSATriangleCount implements ProgramDescription {
 		if(fileOutput) {
 			return env.readCsvFile(edgeInputPath)
 					.ignoreComments("#")
-					.fieldDelimiter("\t")
+					.fieldDelimiter(" ")
 					.lineDelimiter("\n")
 					.types(String.class, String.class)
 					.map(new MapFunction<Tuple2<String, String>, Edge<String, NullValue>>() {

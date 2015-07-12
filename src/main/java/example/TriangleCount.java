@@ -37,11 +37,6 @@ public class TriangleCount implements ProgramDescription {
 
 		DummyGraph<String, NullValue, NullValue> graph = DummyGraph.fromDataSet(edges, env).getUndirected();
 
-		messagesTempFile = File.createTempFile("message_monitoring", ".txt");
-		System.out.println("Messages file " + messagesTempFile.getAbsolutePath());
-		computationTempFile = File.createTempFile("computation_monitoring", ".txt");
-		System.out.println("Computation file" + computationTempFile.getAbsolutePath());
-
 		// simulate the first superstep
 		// select the neighbors with id greater than the current vertex's id
 		DataSet<Vertex<String, String>> verticesWithHigherNeighbors =
@@ -126,14 +121,11 @@ public class TriangleCount implements ProgramDescription {
 				}
 			}
 
-			String messages = "Vertex key " + vertexKey + " number of messages " + neighborCount + "\n";
-			FileAppendSingleton.getInstance().appendToFile(messages, messagesTempFile);
+			System.out.println("Gather " + neighborCount);
 
 			long stop = System.currentTimeMillis();
 			long time = stop - start;
-			String updateTimeElapsed = "Vertex key " + vertexKey +
-					" time elapsed computation " + time + "\n";
-			FileAppendSingleton.getInstance().appendToFile(updateTimeElapsed, computationTempFile);
+			System.out.println("GatherTime " + time);
 		}
 	}
 
@@ -193,14 +185,11 @@ public class TriangleCount implements ProgramDescription {
 				}
 			}
 
-			String messages = "Vertex key " + vertexKey + " number of messages " + neighborCount + "\n";
-			FileAppendSingleton.getInstance().appendToFile(messages, messagesTempFile);
+			System.out.println("Compute " + neighborCount);
 
 			long stop = System.currentTimeMillis();
 			long time = stop -start;
-			String updateTimeElapsed = "Vertex key " + vertexKey +
-					" time elapsed computation " + time + "\n";
-			FileAppendSingleton.getInstance().appendToFile(updateTimeElapsed, computationTempFile);
+			System.out.println("ComputeTime " + time);
 		}
 	}
 
@@ -226,9 +215,6 @@ public class TriangleCount implements ProgramDescription {
 	private static String edgeInputPath = null;
 	private static String outputPath = null;
 
-	private static File messagesTempFile;
-	private static File computationTempFile;
-
 	private static boolean parseParameters(String [] args) {
 		if(args.length > 0) {
 			if(args.length != 2) {
@@ -253,7 +239,7 @@ public class TriangleCount implements ProgramDescription {
 		if(fileOutput) {
 			return env.readCsvFile(edgeInputPath)
 					.ignoreComments("#")
-					.fieldDelimiter("\t")
+					.fieldDelimiter(" ")
 					.lineDelimiter("\n")
 					.types(String.class, String.class)
 					.map(new MapFunction<Tuple2<String, String>, Edge<String, NullValue>>() {

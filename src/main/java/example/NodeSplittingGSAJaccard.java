@@ -13,6 +13,7 @@ import org.apache.flink.graph.Vertex;
 import org.apache.flink.types.NullValue;
 import org.apache.flink.util.Collector;
 import splitUtils.SplitVertex;
+import util.DummyGraph;
 import util.JaccardSimilarityMeasureData;
 import util.NodeSplittingData;
 
@@ -31,7 +32,7 @@ public class NodeSplittingGSAJaccard implements ProgramDescription {
 
 		DataSet<Edge<String, NullValue>> edges = getEdgesDataSet(env);
 
-		// initialize the vertex values with hash sets containing their own ids
+		// initialize the ermivertex values with hash sets containing their own ids
 		Graph<String, HashSet<String>, NullValue> graph = Graph.fromDataSet(edges,
 				new MapFunction<String, HashSet<String>>() {
 
@@ -60,7 +61,7 @@ public class NodeSplittingGSAJaccard implements ProgramDescription {
 		DataSet<Tuple2<String, Tuple2<String, HashSet<String>>>> computedNeighbors =
 				GSAJaccard.getVerticesWithNeighborsForSplitVertces(graphWithSplitVertices);
 
-		// if no the given subvertex has no value, joinWithVertices will keep the initial value,
+		// if the given subvertex has no value, joinWithVertices will keep the initial value,
 		// yielding erroneous results
 		graphWithSplitVertices = graphWithSplitVertices.mapVertices(new MapFunction<Vertex<String, Tuple2<String, HashSet<String>>>, Tuple2<String, HashSet<String>>>() {
 			@Override
@@ -91,8 +92,8 @@ public class NodeSplittingGSAJaccard implements ProgramDescription {
 				SplitVertex.propagateValuesToSplitVertices(graphWithSplitVertices.getVertices(),
 						aggregatedVertices);
 
-		Graph<String, Tuple2<String, HashSet<String>>, NullValue> graphWithNeighbors =
-				Graph.fromDataSet(updatedSplitVertices, graphWithSplitVertices.getEdges(), env);
+		DummyGraph<String, Tuple2<String, HashSet<String>>, NullValue> graphWithNeighbors =
+				DummyGraph.fromDataSet(updatedSplitVertices, graphWithSplitVertices.getEdges(), env);
 
 		// Scatter: compare neighbors; compute Jaccard
 		DataSet<Edge<String, Double>> splitEdgesWithJaccardValues =
@@ -183,7 +184,7 @@ public class NodeSplittingGSAJaccard implements ProgramDescription {
 		if(fileOutput) {
 			return env.readCsvFile(edgeInputPath)
 					.ignoreComments("#")
-					.fieldDelimiter("\t")
+					.fieldDelimiter(" ")
 					.lineDelimiter("\n")
 					.types(String.class, String.class)
 					.map(new MapFunction<Tuple2<String, String>, Edge<String, NullValue>>() {

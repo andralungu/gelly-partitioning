@@ -50,9 +50,11 @@ public class CommunityDetection implements GraphAlgorithm<String, Long, Double> 
 	@SuppressWarnings("serial")
 	public static final class VertexLabelUpdater extends VertexUpdateFunction<String, Tuple2<Long, Double>, Tuple2<Long, Double>> {
 		private Double delta;
+
 		public VertexLabelUpdater(Double delta) {
 			this.delta = delta;
 		}
+
 		@Override
 		public void updateVertex(Vertex<String, Tuple2<Long, Double>> vertex,
 								 MessageIterator<Tuple2<Long, Double>> inMessages) throws Exception {

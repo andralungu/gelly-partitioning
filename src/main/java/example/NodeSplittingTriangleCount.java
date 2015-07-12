@@ -45,11 +45,6 @@ public class NodeSplittingTriangleCount implements ProgramDescription {
 
 		Graph<String, NullValue, NullValue> graph = Graph.fromDataSet(edges, env).getUndirected();
 
-//		messagesTempFile = File.createTempFile("message_monitoring", ".txt");
-//		System.out.println("Messages file " + messagesTempFile.getAbsolutePath());
-//		computationTempFile = File.createTempFile("computation_monitoring", ".txt");
-//		System.out.println("Computation file" + computationTempFile.getAbsolutePath());
-
 		long numVertices = graph.numberOfVertices();
 
 		DataSet<Tuple2<String, Long>> verticesWithDegrees = graph.getDegrees();
@@ -193,14 +188,11 @@ public class NodeSplittingTriangleCount implements ProgramDescription {
 				}
 			}
 
-			String messages = "Vertex key " + vertexKey + " number of messages " + neighborCount + "\n";
-			//Files.append(messages, messagesTempFile, Charsets.UTF_8);
+			System.out.println("GatherSplit " + neighborCount);
 
 			long stop = System.currentTimeMillis();
 			long time = stop - start;
-			String updateTimeElapsed = "Vertex key " + vertexKey +
-					" time elapsed computation " + time + "\n";
-			//Files.append(updateTimeElapsed, computationTempFile, Charsets.UTF_8);
+			System.out.println("GatherTimeSplit " + time);
 		}
 	}
 
@@ -302,14 +294,11 @@ public class NodeSplittingTriangleCount implements ProgramDescription {
 				}
 			}
 
-			String messages = "Vertex key " + vertexKey + " number of messages " + neighborCount + "\n";
-			//Files.append(messages, messagesTempFile, Charsets.UTF_8);
+			System.out.println("ComputeSplit " + neighborCount);
 
 			long stop = System.currentTimeMillis();
 			long time = stop - start;
-			String updateTimeElapsed = "Vertex key " + vertexKey +
-					" time elapsed computation " + time + "\n";
-			//Files.append(updateTimeElapsed, computationTempFile, Charsets.UTF_8);
+			System.out.println("ComputeTimeSplit " + time);
 		}
 	}
 
@@ -368,9 +357,6 @@ public class NodeSplittingTriangleCount implements ProgramDescription {
 	private static Integer level = NodeSplittingData.LEVEL;
 	private static Integer threshold = NodeSplittingData.THRESHOLD;
 
-	private static File messagesTempFile;
-	private static File computationTempFile;
-
 	private static boolean parseParameters(String [] args) {
 		if(args.length > 0) {
 			if(args.length != 5) {
@@ -398,7 +384,7 @@ public class NodeSplittingTriangleCount implements ProgramDescription {
 		if(fileOutput) {
 			return env.readCsvFile(edgeInputPath)
 					.ignoreComments("#")
-					.fieldDelimiter("\t")
+					.fieldDelimiter(" ")
 					.lineDelimiter("\n")
 					.types(String.class, String.class)
 					.map(new MapFunction<Tuple2<String, String>, Edge<String, NullValue>>() {
