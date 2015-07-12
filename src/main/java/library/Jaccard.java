@@ -1,7 +1,5 @@
 package library;
 
-import com.google.common.base.Charsets;
-import com.google.common.io.Files;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
@@ -14,8 +12,6 @@ import org.apache.flink.graph.Vertex;
 import org.apache.flink.types.NullValue;
 import org.apache.flink.util.Collector;
 
-import java.io.File;
-import java.io.IOException;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.TreeMap;
@@ -53,21 +49,11 @@ public class Jaccard {
 	private static final class GatherNeighbors implements NeighborsFunction<String, HashSet<String>, NullValue,
 			Vertex<String, HashSet<String>>> {
 
-		private File tempFile;
-
-		public GatherNeighbors() {
-			try {
-				tempFile = File.createTempFile("message_monitoring", ".txt");
-				System.out.println("Messages file " + tempFile.getAbsolutePath());
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-		}
-
 		@Override
 		public void iterateNeighbors(Iterable<Tuple3<String, Edge<String, NullValue>, Vertex<String, HashSet<String>>>> neighbors,
 									 Collector<Vertex<String, HashSet<String>>> collector) throws Exception {
 
+			long start = System.currentTimeMillis();
 			HashSet<String> neighborsHashSet = new HashSet<String>();
 			Tuple3<String, Edge<String, NullValue>, Vertex<String, HashSet<String>>> next = null;
 			Iterator<Tuple3<String, Edge<String, NullValue>, Vertex<String, HashSet<String>>>> neighborsIterator =
@@ -80,10 +66,12 @@ public class Jaccard {
 				neighborCount++;
 			}
 
-			String messages = "Vertex key " + next.f0 + " number of messages " + neighborCount + "\n";
-			//Files.append(messages, tempFile, Charsets.UTF_8);
+			System.out.println("Gather " + neighborCount);
 
 			collector.collect(new Vertex<String, HashSet<String>>(next.f0, neighborsHashSet));
+			long stop = System.currentTimeMillis();
+			long time = stop - start;
+			System.out.println("GatherTime " + time);
 		}
 	}
 
@@ -91,21 +79,11 @@ public class Jaccard {
 	private static final class GatherNeighborsForSplitVertices implements NeighborsFunction<String, Tuple2<String, HashSet<String>>, NullValue,
 			Vertex<String,HashSet<String>>> {
 
-		private File tempFile;
-
-		public GatherNeighborsForSplitVertices() {
-			try {
-				tempFile = File.createTempFile("message_monitoring", ".txt");
-				System.out.println("Messages file " + tempFile.getAbsolutePath());
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-		}
-
 		@Override
 		public void iterateNeighbors(Iterable<Tuple3<String, Edge<String, NullValue>, Vertex<String, Tuple2<String, HashSet<String>>>>> neighbors,
 										 Collector<Vertex<String, HashSet<String>>> collector) throws Exception {
 
+			long start = System.currentTimeMillis();
 			HashSet<String> neighborsHashSet = new HashSet<String>();
 			Tuple3<String, Edge<String, NullValue>, Vertex<String, Tuple2<String, HashSet<String>>>> next = null;
 			Iterator<Tuple3<String, Edge<String, NullValue>, Vertex<String, Tuple2<String, HashSet<String>>>>> neighborsIterator =
@@ -118,10 +96,12 @@ public class Jaccard {
 				neighborCount++;
 			}
 
-			String messages = "Vertex key " + next.f0 + " number of messages " + neighborCount + "\n";
-			//Files.append(messages, tempFile, Charsets.UTF_8);
+			System.out.println("GatherSplit " + neighborCount);
 
 			collector.collect(new Vertex<String, HashSet<String>>(next.f0, neighborsHashSet));
+			long stop = System.currentTimeMillis();
+			long time = stop - start;
+			System.out.println("GatherTimeSplit " + time);
 		}
 	}
 
@@ -140,22 +120,12 @@ public class Jaccard {
 	private static final class ComputeJaccard implements NeighborsFunctionWithVertexValue<String, HashSet<String>, NullValue,
 			Vertex<String, TreeMap<String, Double>>> {
 
-		private File tempFile;
-
-		public ComputeJaccard() {
-			try {
-				tempFile = File.createTempFile("message_monitoring", ".txt");
-				System.out.println("Messages file " + tempFile.getAbsolutePath());
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-		}
-
 		@Override
 		public void iterateNeighbors(Vertex<String, HashSet<String>> vertex,
 									 Iterable<Tuple2<Edge<String, NullValue>, Vertex<String, HashSet<String>>>> neighbors,
 									 Collector<Vertex<String, TreeMap<String, Double>>> collector) throws Exception {
 
+			long start = System.currentTimeMillis();
 			TreeMap<String, Double> jaccard = new TreeMap<>();
 			Tuple2<Edge<String, NullValue>, Vertex<String, HashSet<String>>> next = null;
 			Iterator<Tuple2<Edge<String, NullValue>, Vertex<String, HashSet<String>>>> neighborsIterator =
@@ -181,10 +151,12 @@ public class Jaccard {
 				neighborCount++;
 			}
 
-			String messages = "Vertex key " + vertex.getId() + " number of messages " + neighborCount + "\n";
-			//Files.append(messages, tempFile, Charsets.UTF_8);
+			System.out.println("Compute " + neighborCount);
 
 			collector.collect(new Vertex<String, TreeMap<String, Double>>(vertex.getId(), jaccard));
+			long stop = System.currentTimeMillis();
+			long time = stop - start;
+			System.out.println("ComputeTime " + time);
 		}
 	}
 
@@ -193,22 +165,12 @@ public class Jaccard {
 			Tuple2<String,HashSet<String>>, NullValue,
 			Vertex<String, TreeMap<String, Double>>> {
 
-		private File tempFile;
-
-		public ComputeJaccardForSplitVertices() {
-			try {
-				tempFile = File.createTempFile("message_monitoring", ".txt");
-				System.out.println("Messages file " + tempFile.getAbsolutePath());
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-		}
-
 		@Override
 		public void iterateNeighbors(Vertex<String, Tuple2<String, HashSet<String>>> vertex,
 									 Iterable<Tuple2<Edge<String, NullValue>, Vertex<String, Tuple2<String, HashSet<String>>>>> neighbors,
 									 Collector<Vertex<String, TreeMap<String, Double>>>  collector) throws Exception {
 
+			long start = System.currentTimeMillis();
 			TreeMap<String, Double> jaccard = new TreeMap<>();
 			Tuple2<Edge<String, NullValue>, Vertex<String, Tuple2<String, HashSet<String>>>> next = null;
 			Iterator<Tuple2<Edge<String, NullValue>, Vertex<String, Tuple2<String, HashSet<String>>>>> neighborsIterator =
@@ -235,10 +197,12 @@ public class Jaccard {
 				neighborCount++;
 			}
 
-			String messages = "Vertex key " + vertex.getId() + " number of messages " + neighborCount + "\n";
-			//Files.append(messages, tempFile, Charsets.UTF_8);
+			System.out.println("ComputeSplit " + neighborCount);
 
 			collector.collect(new Vertex<String, TreeMap<String, Double>>(vertex.getId(), jaccard));
+			long stop = System.currentTimeMillis();
+			long time = stop - start;
+			System.out.println("ComputeTimeSplit " + time);
 		}
 	}
 }

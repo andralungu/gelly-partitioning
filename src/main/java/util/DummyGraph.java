@@ -141,14 +141,14 @@ public class DummyGraph<K, VV, EV> {
 			case IN:
 				// create <edge-sourceVertex> pairs
 				DataSet<Tuple2<Edge<K, EV>, Vertex<K, VV>>> edgesWithSources = edges
-						.join(this.vertices).where(0).equalTo(0);
+						.join(this.vertices, JoinOperatorBase.JoinHint.BROADCAST_HASH_SECOND).where(0).equalTo(0);
 				return vertices.coGroup(edgesWithSources)
 						.where(0).equalTo("f0.f1")
 						.with(new ApplyNeighborCoGroupFunction<K, VV, EV, T>(neighborsFunction));
 			case OUT:
 				// create <edge-targetVertex> pairs
 				DataSet<Tuple2<Edge<K, EV>, Vertex<K, VV>>> edgesWithTargets = edges
-						.join(this.vertices).where(1).equalTo(0);
+						.join(this.vertices, JoinOperatorBase.JoinHint.BROADCAST_HASH_SECOND).where(1).equalTo(0);
 				return vertices.coGroup(edgesWithTargets)
 						.where(0).equalTo("f0.f0")
 						.with(new ApplyNeighborCoGroupFunction<K, VV, EV, T>(neighborsFunction));
@@ -469,9 +469,11 @@ public class DummyGraph<K, VV, EV> {
 	}
 
 	public DataSet<Triplet<K, VV, EV>> getTriplets() {
-		return this.getVertices().join(this.getEdges()).where(0).equalTo(0)
+		return this.getVertices().join(this.getEdges(), JoinOperatorBase.JoinHint.BROADCAST_HASH_FIRST)
+				.where(0).equalTo(0)
 				.with(new ProjectEdgeWithSrcValue<K, VV, EV>())
-				.join(this.getVertices()).where(1).equalTo(0)
+				.join(this.getVertices(), JoinOperatorBase.JoinHint.BROADCAST_HASH_SECOND)
+				.where(1).equalTo(0)
 				.with(new ProjectEdgeWithVertexValues<K, VV, EV>());
 	}
 
