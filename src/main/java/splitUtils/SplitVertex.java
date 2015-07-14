@@ -8,6 +8,7 @@ import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.GroupReduceFunction;
 import org.apache.flink.api.common.functions.JoinFunction;
 import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.common.operators.base.JoinOperatorBase;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple2;
@@ -152,9 +153,11 @@ public class SplitVertex {
 			DataSet<Edge<String, EV>> edgesWithSkewedVertices,
 			DataSet<Vertex<String, NullValue>> skewedVertices) {
 
-		DataSet<Edge<String, EV>> edgesWithSplitSource = skewedVertices.join(edgesWithSkewedVertices).where(0).equalTo(0)
+		DataSet<Edge<String, EV>> edgesWithSplitSource = skewedVertices
+				.join(edgesWithSkewedVertices, JoinOperatorBase.JoinHint.BROADCAST_HASH_FIRST).where(0).equalTo(0)
 				.with(new ProjectDuplicateEdge<EV>());
-		DataSet<Edge<String, EV>> edgeWithSplitTarget = skewedVertices.join(edgesWithSkewedVertices).where(0).equalTo(1)
+		DataSet<Edge<String, EV>> edgeWithSplitTarget = skewedVertices
+				.join(edgesWithSkewedVertices, JoinOperatorBase.JoinHint.BROADCAST_HASH_FIRST).where(0).equalTo(1)
 				.with(new ProjectDuplicateEdge<EV>());
 
 		DataSet<Edge<String, EV>> splitEdges = edgesWithSplitSource.union(edgeWithSplitTarget).distinct();
@@ -419,7 +422,7 @@ public class SplitVertex {
 			DataSet<Vertex<String, Tuple2<String, VV>>> splitVertices,
 			DataSet<Vertex<String, VV>> aggregatedVertices) {
 
-		return splitVertices.join(aggregatedVertices)
+		return splitVertices.join(aggregatedVertices, JoinOperatorBase.JoinHint.BROADCAST_HASH_SECOND)
 				.where(new KeySelector<Vertex<String, Tuple2<String, VV>>, String>() {
 					@Override
 					public String getKey(Vertex<String, Tuple2<String, VV>> vertex) throws Exception {
