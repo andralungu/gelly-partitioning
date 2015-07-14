@@ -2,8 +2,6 @@ package example;
 
 import org.apache.flink.api.common.ProgramDescription;
 import org.apache.flink.api.common.functions.CoGroupFunction;
-import org.apache.flink.api.common.functions.GroupReduceFunction;
-import org.apache.flink.api.common.functions.IterationRuntimeContext;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.RichCoGroupFunction;
 import org.apache.flink.api.common.functions.RichGroupReduceFunction;
@@ -11,9 +9,7 @@ import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.operators.DeltaIteration;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.api.java.tuple.Tuple4;
-import org.apache.flink.api.java.tuple.Tuple5;
 import org.apache.flink.graph.Edge;
 import org.apache.flink.graph.Graph;
 import org.apache.flink.graph.Vertex;
@@ -72,8 +68,8 @@ public class NodeSplittingCommunityDetection implements ProgramDescription {
 				splitVertices.iterateDelta(splitVertices, maxIterations, 0);
 
 		// perform the two regular coGroups from Vertex - centric
-		DataSet<Vertex<String, Tuple2<String, Tuple2<Long, Double>>>> messages =  edges.coGroup(iteration.getWorkset())
-				.where(0).equalTo(0).with(new MessagingFunctionMock());
+		DataSet<Vertex<String, Tuple2<String, Tuple2<Long, Double>>>> messages =  graphWithScoredVertices.getEdges()
+				.coGroup(iteration.getWorkset()).where(0).equalTo(0).with(new MessagingFunctionMock());
 
 		DataSet<Vertex<String, Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>>> updates =
 				messages.coGroup(iteration.getSolutionSet())
@@ -94,6 +90,16 @@ public class NodeSplittingCommunityDetection implements ProgramDescription {
 				});
 
 		// propagate
+		DataSet<Vertex<String, Tuple2<String, Tuple2<Long, Double>>>> updatedSplitVertices =
+				SplitVertex.propagateValuesToSplitVertices(splitVertices, aggregatedVertices);
+
+		// close the iteration
+		DataSet<Vertex<String, Tuple2<String, Tuple2<Long, Double>>>> partialResult = iteration.closeWith(updatedSplitVertices,
+				updatedSplitVertices);
+
+		partialResult.print();
+		// Step 3: Bring the vertices back to their initial state
+
 	}
 
 	@SuppressWarnings("serial")
@@ -117,7 +123,7 @@ public class NodeSplittingCommunityDetection implements ProgramDescription {
 				while (verticesIterator.hasNext()) {
 					nextVertex = verticesIterator.next();
 
-					collector.collect(new Vertex<String, Tuple2<String, Tuple2<Long, Double>>>(nextVertex.getId(),
+					collector.collect(new Vertex<String, Tuple2<String, Tuple2<Long, Double>>>(nextEdge.getTarget(),
 							new Tuple2<String, Tuple2<Long, Double>>(nextVertex.getValue().f0,
 									new Tuple2<Long, Double>(nextVertex.getValue().f1.f0,
 									nextVertex.getValue().f1.f1 * nextEdge.getValue()))));
@@ -186,17 +192,6 @@ public class NodeSplittingCommunityDetection implements ProgramDescription {
 		}
 	}
 
-////							// else delta = 0
-////							// update own label
-////							collector.collect(new Vertex<String, Tuple3<String, Long, Double>>(vertexNext.getId(),
-////									new Tuple3<String, Long, Double>(vertexNext.getValue().f0,
-////											maxScoreLabel, highestScore)));
-////						}
-//						collector.collect(new Vertex<String, Tuple3<String, Long, Double>>(nextVertex.getValue().f0,
-//								new Tuple3<String, Long, Double>(nextVertex.getValue().f0, nextVertex.getValue().f1, nextVertex.getValue().f2)));
-//					}
-//				});
-
 	@SuppressWarnings("serial")
 	public static final class Aggregate extends RichGroupReduceFunction<Vertex<String, Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>>,
 			Vertex<String, Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>>> {
@@ -209,38 +204,74 @@ public class NodeSplittingCommunityDetection implements ProgramDescription {
 			Iterator<Vertex<String, Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>>> iteratorVertex = vertexIterable.iterator();
 			Vertex<String, Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>> nextVertex = null;
 
+			Map<Long, Double> aggregatedReceivedLabelsWithScores = new TreeMap<>();
+			Map<Long, Double> aggregatedLabelsWithHighestScore = new TreeMap<>();
+
+			String tag = null;
+			Long label = 0L;
+			Double score = 0.0;
+
 			while (iteratorVertex.hasNext()) {
 				nextVertex = iteratorVertex.next();
 
 				Map<Long, Double> receivedLabelsWithScores = nextVertex.getValue().f1.f2;
 				Map<Long, Double> labelsWithHighestScore = nextVertex.getValue().f1.f3;
 
-				if (receivedLabelsWithScores.size() > 0) {
-					// find the label with the highest score from the ones received
-					Double maxScore = -Double.MAX_VALUE;
-					Long maxScoreLabel = nextVertex.getValue().f1.f0;
-					for (Long curLabel : receivedLabelsWithScores.keySet()) {
-						if (receivedLabelsWithScores.get(curLabel) > maxScore) {
-							maxScore = receivedLabelsWithScores.get(curLabel);
-							maxScoreLabel = curLabel;
+				tag = nextVertex.getValue().f0;
+				label = nextVertex.getValue().f1.f0;
+				score = nextVertex.getValue().f1.f1;
+
+				// unite the tree maps: 2_0, x and 2_1, y
+				for (Long key : receivedLabelsWithScores.keySet()) {
+					if (aggregatedReceivedLabelsWithScores.containsKey(key)) {
+						Double newScore = receivedLabelsWithScores.get(key) + aggregatedReceivedLabelsWithScores
+								.get(key);
+						aggregatedReceivedLabelsWithScores.put(key, newScore);
+					} else {
+						aggregatedReceivedLabelsWithScores.put(key, receivedLabelsWithScores.get(key));
+					}
+
+					if (aggregatedLabelsWithHighestScore.containsKey(key)) {
+						Double currentScore = aggregatedLabelsWithHighestScore.get(key);
+						if (currentScore < receivedLabelsWithScores.get(key)) {
+							// record the highest score
+							aggregatedLabelsWithHighestScore.put(key, receivedLabelsWithScores.get(key));
 						}
+					} else {
+						// first time we see this label
+						aggregatedLabelsWithHighestScore.put(key, receivedLabelsWithScores.get(key));
 					}
-					// find the highest score of maxScoreLabel
-					Double highestScore = labelsWithHighestScore.get(maxScoreLabel);
-					// re-score the new label
-					if (maxScoreLabel != nextVertex.getValue().f1.f0) {
-						highestScore -= delta / getIterationRuntimeContext().getSuperstepNumber();
-					}
-					// else delta = 0
-					// update own label
-					// RichGroupReduce wants you to return the same type
-					collector.collect(new Vertex<String, Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>>(
-							nextVertex.getValue().f0,
-							new Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>(
-									nextVertex.getValue().f0, new Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>(
-									maxScoreLabel, highestScore, new TreeMap<Long, Double>(), new TreeMap<Long, Double>()))));
 				}
 			}
+
+			if (aggregatedReceivedLabelsWithScores.size() > 0) {
+
+				Double maxScore = -Double.MAX_VALUE;
+				Long maxScoreLabel = label;
+
+				for (Long curLabel : aggregatedReceivedLabelsWithScores.keySet()) {
+					if (aggregatedReceivedLabelsWithScores.get(curLabel) > maxScore) {
+						maxScore = aggregatedReceivedLabelsWithScores.get(curLabel);
+						maxScoreLabel = curLabel;
+					}
+				}
+				// find the highest score of maxScoreLabel
+				Double highestScore = aggregatedLabelsWithHighestScore.get(maxScoreLabel);
+				// re-score the new label
+				if (maxScoreLabel != label) {
+					highestScore -= delta / getIterationRuntimeContext().getSuperstepNumber();
+				}
+				// else delta = 0
+				// update own label
+				// RichGroupReduce wants you to return the same type
+				collector.collect(new Vertex<String, Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>>(
+						nextVertex.getValue().f0,
+						new Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>(
+								nextVertex.getValue().f0, new Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>(
+								maxScoreLabel, highestScore, new TreeMap<Long, Double>(), new TreeMap<Long, Double>()))));
+
+			} 
+
 		}
 	}
 
