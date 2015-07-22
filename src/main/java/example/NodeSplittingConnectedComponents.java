@@ -234,7 +234,7 @@ public class NodeSplittingConnectedComponents implements ProgramDescription {
 		if (fileOutput) {
 			return env.readCsvFile(edgeInputPath)
 					.ignoreComments("#")
-					.fieldDelimiter("\t")
+					.fieldDelimiter(" ")
 					.lineDelimiter("\n")
 					.types(String.class, String.class)
 					.map(new MapFunction<Tuple2<String, String>, Edge<String, NullValue>>() {

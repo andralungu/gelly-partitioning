@@ -2,11 +2,13 @@ package example;
 
 import org.apache.flink.api.common.ProgramDescription;
 import org.apache.flink.api.common.functions.CoGroupFunction;
+import org.apache.flink.api.common.functions.GroupReduceFunction;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.RichCoGroupFunction;
 import org.apache.flink.api.common.functions.RichGroupReduceFunction;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
+import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.operators.DeltaIteration;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple4;
@@ -73,21 +75,21 @@ public class NodeSplittingCommunityDetection implements ProgramDescription {
 
 		DataSet<Vertex<String, Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>>> updates =
 				messages.coGroup(iteration.getSolutionSet())
-				.where(0).equalTo(0).with(new VertexUpdateFunctionMock());
+						.where(0).equalTo(0).with(new VertexUpdateFunctionMock());
 
 		// aggregate
 		DataSet<Vertex<String, Tuple2<Long, Double>>> aggregatedVertices =
 				SplitVertex.treeAggregate(updates, level, new Aggregate())
-				.map(new MapFunction<Vertex<String, Tuple2<String, Tuple4<Long, Double, Map<Long, Double>,
-						Map<Long, Double>>>>, Vertex<String, Tuple2<Long, Double>>>() {
+						.map(new MapFunction<Vertex<String, Tuple2<String, Tuple4<Long, Double, Map<Long, Double>,
+								Map<Long, Double>>>>, Vertex<String, Tuple2<Long, Double>>>() {
 
-					@Override
-					public Vertex<String, Tuple2<Long, Double>> map(Vertex<String, Tuple2<String,
-							Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>> vertex) throws Exception {
-						return new Vertex<String, Tuple2<Long, Double>>(vertex.getId(), new Tuple2<Long, Double>(vertex.getValue().f1.f0,
-								vertex.getValue().f1.f1));
-					}
-				});
+							@Override
+							public Vertex<String, Tuple2<Long, Double>> map(Vertex<String, Tuple2<String,
+									Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>> vertex) throws Exception {
+								return new Vertex<String, Tuple2<Long, Double>>(vertex.getId(), new Tuple2<Long, Double>(vertex.getValue().f1.f0,
+										vertex.getValue().f1.f1));
+							}
+						});
 
 		// propagate
 		DataSet<Vertex<String, Tuple2<String, Tuple2<Long, Double>>>> updatedSplitVertices =
@@ -97,9 +99,44 @@ public class NodeSplittingCommunityDetection implements ProgramDescription {
 		DataSet<Vertex<String, Tuple2<String, Tuple2<Long, Double>>>> partialResult = iteration.closeWith(updatedSplitVertices,
 				updatedSplitVertices);
 
-		partialResult.print();
 		// Step 3: Bring the vertices back to their initial state
+		DataSet<Vertex<String, Long>> communityVertices =
+				partialResult.groupBy(new KeySelector<Vertex<String,Tuple2<String,Tuple2<Long,Double>>>, String>() {
+					@Override
+					public String getKey(Vertex<String, Tuple2<String, Tuple2<Long, Double>>> vertex) throws Exception {
+						return vertex.getValue().f0;
+					}
+				}).reduceGroup(new GroupReduceFunction<Vertex<String, Tuple2<String, Tuple2<Long, Double>>>, Vertex<String, Tuple2<Long, Double>>>() {
+					@Override
+					public void reduce(Iterable<Vertex<String, Tuple2<String, Tuple2<Long, Double>>>> iterableVertex,
+									   Collector<Vertex<String, Tuple2<Long, Double>>> collector) throws Exception {
 
+						Iterator<Vertex<String, Tuple2<String, Tuple2<Long, Double>>>> vertexIterator = iterableVertex.iterator();
+						Vertex<String, Tuple2<String, Tuple2<Long, Double>>> next = null;
+
+						if (vertexIterator.hasNext()) {
+							next = vertexIterator.next();
+						}
+
+						collector.collect(new Vertex<String, Tuple2<Long, Double>>(next.getValue().f0,
+								next.getValue().f1));
+					}
+				}).map(new MapFunction<Vertex<String, Tuple2<Long, Double>>, Vertex<String, Long>>() {
+					@Override
+					public Vertex<String, Long> map(Vertex<String, Tuple2<Long, Double>> vertex) throws Exception {
+						return new Vertex<String, Long>(vertex.getId(), vertex.getValue().f0);
+					}
+				});
+
+		// emit result
+		if (fileOutput) {
+			communityVertices.writeAsCsv(outputPath, "\n", ",");
+
+			// since file sinks are lazy, we trigger the execution explicitly
+			env.execute("Executing Node Splitting Community Detection Example");
+		} else {
+			communityVertices.print();
+		}
 	}
 
 	@SuppressWarnings("serial")
@@ -126,7 +163,7 @@ public class NodeSplittingCommunityDetection implements ProgramDescription {
 					collector.collect(new Vertex<String, Tuple2<String, Tuple2<Long, Double>>>(nextEdge.getTarget(),
 							new Tuple2<String, Tuple2<Long, Double>>(nextVertex.getValue().f0,
 									new Tuple2<Long, Double>(nextVertex.getValue().f1.f0,
-									nextVertex.getValue().f1.f1 * nextEdge.getValue()))));
+											nextVertex.getValue().f1.f1 * nextEdge.getValue()))));
 				}
 			}
 		}
@@ -134,7 +171,7 @@ public class NodeSplittingCommunityDetection implements ProgramDescription {
 
 	@SuppressWarnings("serial")
 	public static final class VertexUpdateFunctionMock extends RichCoGroupFunction<Vertex<String, Tuple2<String, Tuple2<Long, Double>>>,
-				Vertex<String, Tuple2<String, Tuple2<Long, Double>>>, Vertex<String, Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>>> {
+			Vertex<String, Tuple2<String, Tuple2<Long, Double>>>, Vertex<String, Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>>> {
 
 		@Override
 		public void coGroup(Iterable<Vertex<String, Tuple2<String, Tuple2<Long, Double>>>> message,
@@ -182,13 +219,45 @@ public class NodeSplittingCommunityDetection implements ProgramDescription {
 				}
 			}
 
+			if(vertexNext.getValue().f0.equals(vertexNext.getId())) {
+				if(receivedLabelsWithScores.size() > 0) {
+					// find the label with the highest score from the ones received
+					Double maxScore = -Double.MAX_VALUE;
+					Long maxScoreLabel = vertexNext.getValue().f1.f0;
+					for (Long curLabel : receivedLabelsWithScores.keySet()) {
+						if (receivedLabelsWithScores.get(curLabel) > maxScore) {
+							maxScore = receivedLabelsWithScores.get(curLabel);
+							maxScoreLabel = curLabel;
+						}
+					}
+					// find the highest score of maxScoreLabel
+					Double highestScore = labelsWithHighestScore.get(maxScoreLabel);
+					// re-score the new label
+					if (maxScoreLabel != vertexNext.getValue().f1.f0) {
+						highestScore -= delta / getIterationRuntimeContext().getSuperstepNumber();
+					}
+
+					collector.collect(new Vertex<String, Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>>(
+							vertexNext.getValue().f0,
+							new Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>(
+									vertexNext.getValue().f0, new Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>(
+									maxScoreLabel, highestScore, new TreeMap<Long, Double>(), new TreeMap<Long, Double>()))));
+				} else {
+					collector.collect(new Vertex<String, Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>>(
+							vertexNext.getValue().f0,
+							new Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>(
+									vertexNext.getValue().f0, new Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>(
+									vertexNext.getValue().f1.f0, vertexNext.getValue().f1.f1, new TreeMap<Long, Double>(), new TreeMap<Long, Double>()))));
+				}
+			}
+
 			// keep the TreeMaps in the vertex value
 			collector.collect(new Vertex<String, Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>>(
-							vertexNext.getId(), new Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>(
-							vertexNext.getValue().f0, new Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>(
-							vertexNext.getValue().f1.f0, vertexNext.getValue().f1.f1,
-							receivedLabelsWithScores, labelsWithHighestScore
-					))));
+					vertexNext.getId(), new Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>(
+					vertexNext.getValue().f0, new Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>(
+					vertexNext.getValue().f1.f0, vertexNext.getValue().f1.f1,
+					receivedLabelsWithScores, labelsWithHighestScore
+			))));
 		}
 	}
 
@@ -270,7 +339,13 @@ public class NodeSplittingCommunityDetection implements ProgramDescription {
 								nextVertex.getValue().f0, new Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>(
 								maxScoreLabel, highestScore, new TreeMap<Long, Double>(), new TreeMap<Long, Double>()))));
 
-			} 
+			} else {
+				collector.collect(new Vertex<String, Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>>(
+						nextVertex.getValue().f0,
+						new Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>(
+								nextVertex.getValue().f0, new Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>(
+								nextVertex.getValue().f1.f0, nextVertex.getValue().f1.f1, new TreeMap<Long, Double>(), new TreeMap<Long, Double>()))));
+			}
 
 		}
 	}
