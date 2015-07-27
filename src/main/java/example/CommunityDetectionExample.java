@@ -5,6 +5,7 @@ import org.apache.flink.api.common.ProgramDescription;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.graph.Edge;
 import org.apache.flink.graph.Graph;
 import org.apache.flink.graph.Vertex;
@@ -86,10 +87,15 @@ public class CommunityDetectionExample implements ProgramDescription {
 
 			return env.readCsvFile(edgeInputPath)
 					.ignoreComments("#")
-					.fieldDelimiter(" ")
+					.fieldDelimiter("\t")
 					.lineDelimiter("\n")
-					.types(String.class, String.class, Double.class)
-					.map(new Tuple3ToEdgeMap<String, Double>());
+					.types(String.class, String.class)
+					.map(new MapFunction<Tuple2<String, String>, Edge<String, Double>>() {
+						@Override
+						public Edge<String, Double> map(Tuple2<String, String> tuple2) throws Exception {
+							return new Edge<String, Double>(tuple2.f0, tuple2.f1, 3.0);
+						}
+					});
 		} else {
 			return CommunityDetectionData.getDefaultEdgeDataSet(env);
 		}

@@ -1,6 +1,5 @@
 package splitUtils;
 
-import nl.peterbloem.powerlaws.Continuous;
 import org.apache.flink.api.common.functions.CoGroupFunction;
 import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.functions.FlatJoinFunction;
@@ -42,24 +41,6 @@ public class SplitVertex {
 						}
 					}
 				});
-	}
-
-	public static <K extends Comparable<K> & Serializable> double retrieveXMin(DataSet<Tuple2<K, Long>> verticesWithDegrees) throws Exception {
-		// Data2Semantics takes an array of doubles representing the degrees, computes an
-		// xMin and everything above that threshold is skewed
-		DataSet<Double> degrees = verticesWithDegrees.map(new MapFunction<Tuple2<K, Long>, Double>() {
-
-			@Override
-			public Double map(Tuple2<K, Long> idDegreeTuple2) throws Exception {
-				return new Double(idDegreeTuple2.f1);
-			}
-		});
-
-		List<Double> arrayOfDegrees = degrees.collect();
-
-		Continuous distribution = Continuous.fit(arrayOfDegrees).fit();
-
-		return distribution.xMin();
 	}
 
 	/**

@@ -35,6 +35,7 @@ public class NodeSplittingCommunityDetection implements ProgramDescription {
 		}
 
 		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+		env.getConfig().disableSysoutLogging();
 
 		DataSet<Edge<String, Double>> edges = getEdgesDataSet(env);
 		Graph<String, Long, Double> graph = Graph.fromDataSet(edges,
@@ -67,7 +68,7 @@ public class NodeSplittingCommunityDetection implements ProgramDescription {
 		// Step 2: Create a delta iteration that takes the split vertex set as a solution set
 		// At the end of each superstep, group by vertex id(tag), do the merging and update the vertex value.
 		final DeltaIteration<Vertex<String, Tuple2<String, Tuple2<Long, Double>>>,	Vertex<String, Tuple2<String, Tuple2<Long, Double>>>> iteration =
-				splitVertices.iterateDelta(splitVertices, maxIterations, 0);
+				splitVertices.iterateDelta(splitVertices, 1, 0);
 
 		// perform the two regular coGroups from Vertex - centric
 		DataSet<Vertex<String, Tuple2<String, Tuple2<Long, Double>>>> messages =  graphWithScoredVertices.getEdges()
@@ -124,6 +125,7 @@ public class NodeSplittingCommunityDetection implements ProgramDescription {
 				}).map(new MapFunction<Vertex<String, Tuple2<Long, Double>>, Vertex<String, Long>>() {
 					@Override
 					public Vertex<String, Long> map(Vertex<String, Tuple2<Long, Double>> vertex) throws Exception {
+						System.out.println(vertex);
 						return new Vertex<String, Long>(vertex.getId(), vertex.getValue().f0);
 					}
 				});
@@ -186,12 +188,10 @@ public class NodeSplittingCommunityDetection implements ProgramDescription {
 			// we would like these two maps to be ordered
 			Map<Long, Double> receivedLabelsWithScores = new TreeMap<Long, Double>();
 			Map<Long, Double> labelsWithHighestScore = new TreeMap<Long, Double>();
-
-			while (messageIterator.hasNext()) {
-				messageNext = messageIterator.next();
-
-				while (vertexIterator.hasNext()) {
-					vertexNext = vertexIterator.next();
+			while (vertexIterator.hasNext()) {
+				vertexNext = vertexIterator.next();
+				while (messageIterator.hasNext()) {
+					messageNext = messageIterator.next();
 
 					// split the message into received label and score
 					Long receivedLabel = messageNext.getValue().f1.f0;
@@ -236,28 +236,30 @@ public class NodeSplittingCommunityDetection implements ProgramDescription {
 					if (maxScoreLabel != vertexNext.getValue().f1.f0) {
 						highestScore -= delta / getIterationRuntimeContext().getSuperstepNumber();
 					}
-
+					System.out.println(vertexNext.getValue().f0+" "+maxScoreLabel+" "+highestScore);
 					collector.collect(new Vertex<String, Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>>(
 							vertexNext.getValue().f0,
 							new Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>(
 									vertexNext.getValue().f0, new Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>(
 									maxScoreLabel, highestScore, new TreeMap<Long, Double>(), new TreeMap<Long, Double>()))));
 				} else {
+					System.out.println(vertexNext.getValue().f0);
 					collector.collect(new Vertex<String, Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>>(
 							vertexNext.getValue().f0,
 							new Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>(
 									vertexNext.getValue().f0, new Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>(
 									vertexNext.getValue().f1.f0, vertexNext.getValue().f1.f1, new TreeMap<Long, Double>(), new TreeMap<Long, Double>()))));
 				}
-			}
+			} else {
 
-			// keep the TreeMaps in the vertex value
-			collector.collect(new Vertex<String, Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>>(
-					vertexNext.getId(), new Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>(
-					vertexNext.getValue().f0, new Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>(
-					vertexNext.getValue().f1.f0, vertexNext.getValue().f1.f1,
-					receivedLabelsWithScores, labelsWithHighestScore
-			))));
+				// keep the TreeMaps in the vertex value
+				collector.collect(new Vertex<String, Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>>(
+						vertexNext.getId(), new Tuple2<String, Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>>(
+						vertexNext.getValue().f0, new Tuple4<Long, Double, Map<Long, Double>, Map<Long, Double>>(
+						vertexNext.getValue().f1.f0, vertexNext.getValue().f1.f1,
+						receivedLabelsWithScores, labelsWithHighestScore
+				))));
+			}
 		}
 	}
 
@@ -282,6 +284,7 @@ public class NodeSplittingCommunityDetection implements ProgramDescription {
 
 			while (iteratorVertex.hasNext()) {
 				nextVertex = iteratorVertex.next();
+				System.out.println("Reduce:"+nextVertex);
 
 				Map<Long, Double> receivedLabelsWithScores = nextVertex.getValue().f1.f2;
 				Map<Long, Double> labelsWithHighestScore = nextVertex.getValue().f1.f3;
@@ -299,18 +302,20 @@ public class NodeSplittingCommunityDetection implements ProgramDescription {
 					} else {
 						aggregatedReceivedLabelsWithScores.put(key, receivedLabelsWithScores.get(key));
 					}
-
+				}
+				for (Long key : labelsWithHighestScore.keySet()) {
 					if (aggregatedLabelsWithHighestScore.containsKey(key)) {
 						Double currentScore = aggregatedLabelsWithHighestScore.get(key);
-						if (currentScore < receivedLabelsWithScores.get(key)) {
+						if (currentScore < labelsWithHighestScore.get(key)) {
 							// record the highest score
-							aggregatedLabelsWithHighestScore.put(key, receivedLabelsWithScores.get(key));
+							aggregatedLabelsWithHighestScore.put(key, labelsWithHighestScore.get(key));
 						}
 					} else {
 						// first time we see this label
-						aggregatedLabelsWithHighestScore.put(key, receivedLabelsWithScores.get(key));
+						aggregatedLabelsWithHighestScore.put(key, labelsWithHighestScore.get(key));
 					}
 				}
+
 			}
 
 			if (aggregatedReceivedLabelsWithScores.size() > 0) {
@@ -400,10 +405,15 @@ public class NodeSplittingCommunityDetection implements ProgramDescription {
 
 			return env.readCsvFile(edgeInputPath)
 					.ignoreComments("#")
-					.fieldDelimiter(" ")
+					.fieldDelimiter("\t")
 					.lineDelimiter("\n")
-					.types(String.class, String.class, Double.class)
-					.map(new Tuple3ToEdgeMap<String, Double>());
+					.types(String.class, String.class)
+					.map(new MapFunction<Tuple2<String, String>, Edge<String, Double>>() {
+						@Override
+						public Edge<String, Double> map(Tuple2<String, String> tuple2) throws Exception {
+							return new Edge<String, Double>(tuple2.f0, tuple2.f1, 3.0);
+						}
+					});
 		} else {
 			return CommunityDetectionData.getDefaultEdgeDataSet(env);
 		}

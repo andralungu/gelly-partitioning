@@ -1,5 +1,4 @@
 import library.CountDegree;
-import nl.peterbloem.powerlaws.Continuous;
 import org.apache.flink.api.common.functions.CoGroupFunction;
 import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.functions.FlatMapFunction;
@@ -53,10 +52,11 @@ public class SortDegreeNodeSplitting {
 
 		List<Double> arrayOfDegrees = degrees.collect();
 
-		Continuous distribution = Continuous.fit(arrayOfDegrees).fit();
+		//Continuous distribution = Continuous.fit(arrayOfDegrees).fit();
 
 		// retrieve xMin
-		final double xMin = distribution.xMin();
+		//final double xMin = distribution.xMin();
+		final double xMin = NodeSplittingData.THRESHOLD;
 
 		DataSet<Vertex<String, NullValue>> skewedVertices = verticesWithDegrees
 				.flatMap(new FlatMapFunction<Tuple2<String, Long>, Vertex<String, NullValue>>() {
