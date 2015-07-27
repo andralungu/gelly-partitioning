@@ -70,6 +70,8 @@ public class NodeSplittingCommunityDetection implements ProgramDescription {
 		final DeltaIteration<Vertex<String, Tuple2<String, Tuple2<Long, Double>>>,	Vertex<String, Tuple2<String, Tuple2<Long, Double>>>> iteration =
 				splitVertices.iterateDelta(splitVertices, 1, 0);
 
+		iteration.setSolutionSetUnManaged(true);
+
 		// perform the two regular coGroups from Vertex - centric
 		DataSet<Vertex<String, Tuple2<String, Tuple2<Long, Double>>>> messages =  graphWithScoredVertices.getEdges()
 				.coGroup(iteration.getWorkset()).where(0).equalTo(0).with(new MessagingFunctionMock());
