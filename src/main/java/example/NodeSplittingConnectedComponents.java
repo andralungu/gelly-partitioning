@@ -55,6 +55,8 @@ public class NodeSplittingConnectedComponents implements ProgramDescription {
 		final DeltaIteration<Vertex<String, Tuple2<String, Long>>, Vertex<String, Tuple2<String, Long>>> iteration =
 				splitVertices.iterateDelta(splitVertices, maxIterations, 0);
 
+		iteration.setSolutionSetUnManaged(true);
+
 		// perform the two regular coGroups from Vertex - centric
 		DataSet<Vertex<String, Tuple2<String, Long>>> messages =  graphWithSplitVertices.getEdges()
 				.coGroup(iteration.getWorkset()).where(0).equalTo(0).with(new CCMessengerMock());
