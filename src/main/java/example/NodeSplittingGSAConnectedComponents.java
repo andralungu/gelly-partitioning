@@ -240,6 +240,7 @@ public class NodeSplittingGSAConnectedComponents implements ProgramDescription {
 	private static DataSet<Edge<String, NullValue>> getEdgeDataSet(ExecutionEnvironment env) {
 		if (fileOutput) {
 			return env.readCsvFile(edgeInputPath)
+					.ignoreComments("#")
 					.fieldDelimiter("\t")
 					.lineDelimiter("\n")
 					.types(String.class, String.class)

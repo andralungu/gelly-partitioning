@@ -5,6 +5,7 @@ import org.apache.flink.graph.GraphAlgorithm;
 import org.apache.flink.graph.Vertex;
 import org.apache.flink.graph.spargel.MessageIterator;
 import org.apache.flink.graph.spargel.MessagingFunction;
+import org.apache.flink.graph.spargel.VertexCentricConfiguration;
 import org.apache.flink.graph.spargel.VertexUpdateFunction;
 import org.apache.flink.types.NullValue;
 
@@ -32,9 +33,12 @@ public class ConnectedComponentsAlgorithm implements GraphAlgorithm<String, Long
 
 		Graph<String, Long, NullValue> undirectedGraph = graph.getUndirected();
 
+		VertexCentricConfiguration parameters = new VertexCentricConfiguration();
+		parameters.setSolutionSetUnmanagedMemory(true);
+
 		// initialize vertex values and run the Vertex Centric Iteration
 		return undirectedGraph.runVertexCentricIteration(new CCUpdater(),
-				new CCMessenger(), maxIterations);
+				new CCMessenger(), maxIterations, parameters);
 	}
 
 	/**

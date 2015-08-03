@@ -57,7 +57,7 @@ public class GSAJaccard {
 	}
 
 	public static DataSet<Edge<String, Double>> computeJaccard
-			(Graph<String, HashSet<String>, NullValue> graphWithNeighbors) {
+			(DummyGraph<String, HashSet<String>, NullValue> graphWithNeighbors) {
 
 		return graphWithNeighbors.getTriplets().map(new ComputeJaccard());
 	}

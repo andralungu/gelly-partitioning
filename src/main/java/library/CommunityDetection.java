@@ -8,6 +8,7 @@ import org.apache.flink.graph.GraphAlgorithm;
 import org.apache.flink.graph.Vertex;
 import org.apache.flink.graph.spargel.MessageIterator;
 import org.apache.flink.graph.spargel.MessagingFunction;
+import org.apache.flink.graph.spargel.VertexCentricConfiguration;
 import org.apache.flink.graph.spargel.VertexUpdateFunction;
 
 import java.util.Map;
@@ -42,8 +43,12 @@ public class CommunityDetection implements GraphAlgorithm<String, Long, Double> 
 		Graph<String, Long, Double> undirectedGraph = graph.getUndirected();
 		Graph<String, Tuple2<Long, Double>, Double> graphWithScoredVertices = undirectedGraph
 				.mapVertices(new AddScoreToVertexValuesMapper());
+
+		VertexCentricConfiguration parameters = new VertexCentricConfiguration();
+		parameters.setSolutionSetUnmanagedMemory(true);
+
 		return graphWithScoredVertices.runVertexCentricIteration(new VertexLabelUpdater(delta),
-				new LabelMessenger(), maxIterations)
+				new LabelMessenger(), maxIterations, parameters)
 				.mapVertices(new RemoveScoreFromVertexValuesMapper());
 	}
 

@@ -7,10 +7,7 @@ import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.graph.Edge;
 import org.apache.flink.graph.Graph;
-import org.apache.flink.graph.gsa.ApplyFunction;
-import org.apache.flink.graph.gsa.GatherFunction;
-import org.apache.flink.graph.gsa.Neighbor;
-import org.apache.flink.graph.gsa.SumFunction;
+import org.apache.flink.graph.gsa.*;
 import org.apache.flink.types.NullValue;
 import util.ConnectedComponentsData;
 
@@ -33,10 +30,13 @@ public class GSAConnectedComponents implements ProgramDescription {
 			}
 		}, env);
 
+		GSAConfiguration parameters = new GSAConfiguration();
+		parameters.setSolutionSetUnmanagedMemory(true);
+
 		// Execute the GSA iteration
 		Graph<String, String, NullValue> result =
 				graph.runGatherSumApplyIteration(new GatherNeighborIds(), new SelectMinId(),
-						new UpdateComponentId(), maxIterations);
+						new UpdateComponentId(), maxIterations, parameters);
 
 		// emit result
 		if (fileOutput) {
@@ -122,6 +122,7 @@ public class GSAConnectedComponents implements ProgramDescription {
 	private static DataSet<Edge<String, NullValue>> getEdgeDataSet(ExecutionEnvironment env) {
 		if (fileOutput) {
 			return env.readCsvFile(edgeInputPath)
+					.ignoreComments("#")
 					.fieldDelimiter("\t")
 					.lineDelimiter("\n")
 					.types(String.class, String.class)
