@@ -29,6 +29,7 @@ import org.apache.flink.graph.Triplet;
 import org.apache.flink.graph.Vertex;
 import org.apache.flink.types.NullValue;
 import org.apache.flink.util.Collector;
+import partitioning.gsa.*;
 
 import java.io.File;
 import java.util.Iterator;
@@ -611,4 +612,68 @@ public class DummyGraph<K, VV, EV> {
 		}
 	}
 
+
+	/**
+	 * Runs a Gather-Sum-Apply iteration on the graph.
+	 * No configuration options are provided.
+	 *
+	 * @param gatherFunction the gather function collects information about adjacent vertices and edges
+	 * @param sumFunction the sum function aggregates the gathered information
+	 * @param applyFunction the apply function updates the vertex values with the aggregates
+	 * @param maximumNumberOfIterations maximum number of iterations to perform
+	 * @param <M> the intermediate type used between gather, sum and apply
+	 *
+	 * @return the updated Graph after the gather-sum-apply iteration has converged or
+	 * after maximumNumberOfIterations.
+	 */
+	public <M> DummyGraph<K, VV, EV> runGatherSumApplyIteration(
+			GatherFunction<VV, EV, M> gatherFunction, SumFunction<VV, EV, M> sumFunction,
+			ApplyFunction<K, VV, M> applyFunction, int maximumNumberOfIterations) {
+
+		return this.runGatherSumApplyIteration(gatherFunction, sumFunction, applyFunction,
+				maximumNumberOfIterations, null);
+	}
+
+	/**
+	 * Runs a Gather-Sum-Apply iteration on the graph with configuration options.
+	 *
+	 * @param gatherFunction the gather function collects information about adjacent vertices and edges
+	 * @param sumFunction the sum function aggregates the gathered information
+	 * @param applyFunction the apply function updates the vertex values with the aggregates
+	 * @param maximumNumberOfIterations maximum number of iterations to perform
+	 * @param parameters the iteration configuration parameters
+	 * @param <M> the intermediate type used between gather, sum and apply
+	 *
+	 * @return the updated Graph after the gather-sum-apply iteration has converged or
+	 * after maximumNumberOfIterations.
+	 */
+	public <M> DummyGraph<K, VV, EV> runGatherSumApplyIteration(
+			GatherFunction<VV, EV, M> gatherFunction, SumFunction<VV, EV, M> sumFunction,
+			ApplyFunction<K, VV, M> applyFunction, int maximumNumberOfIterations,
+			GSAConfiguration parameters) {
+
+		GatherSumApplyIteration<K, VV, EV, M> iteration = GatherSumApplyIteration.withEdges(
+				edges, gatherFunction, sumFunction, applyFunction, maximumNumberOfIterations);
+
+		iteration.configure(parameters);
+
+		DataSet<Vertex<K, VV>> newVertices = vertices.runOperation(iteration);
+
+		return new DummyGraph<K, VV, EV>(newVertices, this.edges, this.context);
+	}
+
+	public <M> DummyGraph<K, VV, EV> runGatherSumApplyIteration(
+			GatherFunction<VV, EV, M> gatherFunction, SumFunction<VV, EV, M> sumFunction,
+			ApplyFunction<K, VV, M> applyFunction, int maximumNumberOfIterations, int threshold,
+			GSAConfiguration parameters) {
+
+		GatherSumApplyIteration<K, VV, EV, M> iteration = GatherSumApplyIteration.withEdges(
+				edges, gatherFunction, sumFunction, applyFunction, maximumNumberOfIterations, threshold);
+
+		iteration.configure(parameters);
+
+		DataSet<Vertex<K, VV>> newVertices = vertices.runOperation(iteration);
+
+		return new DummyGraph<K, VV, EV>(newVertices, this.edges, this.context);
+	}
 }
