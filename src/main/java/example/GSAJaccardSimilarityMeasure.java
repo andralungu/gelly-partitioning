@@ -10,6 +10,7 @@ import org.apache.flink.graph.Edge;
 import org.apache.flink.graph.Graph;
 import org.apache.flink.graph.Vertex;
 import org.apache.flink.types.NullValue;
+import util.DummyGraph;
 import util.JaccardSimilarityMeasureData;
 
 import java.util.HashSet;
@@ -50,8 +51,8 @@ public class GSAJaccardSimilarityMeasure implements ProgramDescription {
 		DataSet<Vertex<String, HashSet<String>>> verticesWithNeighbors =
 				GSAJaccard.attachValuesToVertices(graph, computedNeighbors);
 
-		Graph<String, HashSet<String>, NullValue> graphWithNeighbors =
-				Graph.fromDataSet(verticesWithNeighbors, edges, env);
+		DummyGraph<String, HashSet<String>, NullValue> graphWithNeighbors =
+				DummyGraph.fromDataSet(verticesWithNeighbors, edges, env);
 
 		// Scatter: compare neighbors; compute Jaccard
 		DataSet<Edge<String, Double>> edgesWithJaccardValues =

@@ -27,29 +27,12 @@ public class ConnectedComponents implements ProgramDescription {
 
 		DataSet<Edge<String, NullValue>> edges = getEdgesDataSet(env);
 
-		DataSet<Vertex<String, Long>> vertices = edges.flatMap(new FlatMapFunction<Edge<String, NullValue>, Vertex<String, Long>>() {
+		Graph<String, Long, NullValue> graph = Graph.fromDataSet(edges, new MapFunction<String, Long>() {
 			@Override
-			public void flatMap(Edge<String, NullValue> edge, Collector<Vertex<String, Long>> collector) throws Exception {
-				collector.collect(new Vertex<String, Long>(edge.getSource(), Long.parseLong(edge.getSource())));
-				collector.collect(new Vertex<String, Long>(edge.getTarget(), Long.parseLong(edge.getTarget())));
+			public Long map(String s) throws Exception {
+				return Long.parseLong(s);
 			}
-		}).distinct();
-
-		if (fileOutput) {
-			vertices.writeAsCsv(vertexInputPath, "\n", ",");
-			env.execute();
-		}
-
-		DataSet<Vertex<String, Long>> rereadVertices = env.readCsvFile(vertexInputPath)
-				.fieldDelimiter(",").lineDelimiter("\n").ignoreComments("#")
-				.types(String.class, Long.class).map(new MapFunction<Tuple2<String, Long>, Vertex<String, Long>>() {
-					@Override
-					public Vertex<String, Long> map(Tuple2<String, Long> tuple2) throws Exception {
-						return new Vertex<String, Long>(tuple2.f0, tuple2.f1);
-					}
-				});
-
-		Graph<String, Long, NullValue> graph = Graph.fromDataSet(rereadVertices, edges, env);
+		}, env);
 
 		DataSet<Vertex<String, Long>> verticesWithMinIds = graph
 				.run(new ConnectedComponentsAlgorithm(maxIterations)).getVertices();
@@ -84,22 +67,21 @@ public class ConnectedComponents implements ProgramDescription {
 
 	private static boolean parseParameters(String[] args) {
 		if (args.length > 0) {
-			if (args.length != 4) {
-				System.err.println("Usage ConnectedComponents <edge path> <vertex path> <output path> " +
+			if (args.length != 3) {
+				System.err.println("Usage ConnectedComponents <edge path> <output path> " +
 						"<num iterations>");
 				return false;
 			}
 
 			fileOutput = true;
 			edgeInputPath = args[0];
-			vertexInputPath = args[1];
-			outputPath = args[2];
-			maxIterations = Integer.parseInt(args[3]);
+			outputPath = args[1];
+			maxIterations = Integer.parseInt(args[2]);
 
 		} else {
 			System.out.println("Executing ConnectedComponents example with default parameters and built-in default data.");
 			System.out.println("Provide parameters to read input data from files.");
-			System.out.println("Usage ConnectedComponents <edge path> <vertex path> <output path> " +
+			System.out.println("Usage ConnectedComponents <edge path> <output path> " +
 					"<num iterations>");
 		}
 

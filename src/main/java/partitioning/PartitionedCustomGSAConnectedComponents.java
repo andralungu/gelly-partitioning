@@ -1,4 +1,4 @@
-package example;
+package partitioning;
 
 import org.apache.flink.api.common.ProgramDescription;
 import org.apache.flink.api.common.functions.MapFunction;
@@ -6,16 +6,17 @@ import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.graph.Edge;
-import org.apache.flink.graph.Graph;
-import org.apache.flink.graph.gsa.*;
 import org.apache.flink.types.NullValue;
+import partitioning.gsa.*;
 import util.ConnectedComponentsData;
+import util.DummyGraph;
+import util.NodeSplittingData;
 
-public class GSAConnectedComponents implements ProgramDescription {
+public class PartitionedCustomGSAConnectedComponents implements ProgramDescription{
 
 	public static void main (String [] args) throws Exception {
 
-		if (!parseParameters(args)) {
+		if(!parseParameters(args)) {
 			return;
 		}
 
@@ -23,7 +24,7 @@ public class GSAConnectedComponents implements ProgramDescription {
 
 		DataSet<Edge<String, NullValue>> edges = getEdgeDataSet(env);
 
-		Graph<String, String, NullValue> graph = Graph.fromDataSet(edges, new MapFunction<String, String>() {
+		DummyGraph<String, String, NullValue> graph = DummyGraph.fromDataSet(edges, new MapFunction<String, String>() {
 			@Override
 			public String map(String s) throws Exception {
 				return s;
@@ -32,18 +33,19 @@ public class GSAConnectedComponents implements ProgramDescription {
 
 		GSAConfiguration parameters = new GSAConfiguration();
 		parameters.setSolutionSetUnmanagedMemory(true);
+		parameters.setCustomPartition(true);
 
 		// Execute the GSA iteration
-		Graph<String, String, NullValue> result =
+		DummyGraph<String, String, NullValue> result =
 				graph.runGatherSumApplyIteration(new GatherNeighborIds(), new SelectMinId(),
-						new UpdateComponentId(), maxIterations, parameters);
+						new UpdateComponentId(), maxIterations, threshold, parameters);
 
 		// emit result
 		if (fileOutput) {
 			result.getVertices().writeAsCsv(outputPath, "\n", " ");
 
 			// since file sinks are lazy, we trigger the execution explicitly
-			env.execute("GSA Connected Components");
+			env.execute("GSA Connected Components - Custom Partitioned");
 		} else {
 			result.getVertices().print();
 		}
@@ -81,7 +83,7 @@ public class GSAConnectedComponents implements ProgramDescription {
 
 	@Override
 	public String getDescription() {
-		return "GSA Connected Components";
+		return "Partition Custom GSA Connected Components";
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -93,6 +95,7 @@ public class GSAConnectedComponents implements ProgramDescription {
 	private static String outputPath = null;
 
 	private static int maxIterations = ConnectedComponentsData.MAX_ITERATIONS;
+	private static int threshold = NodeSplittingData.THRESHOLD;
 
 	private static boolean parseParameters(String [] args) {
 
@@ -100,20 +103,21 @@ public class GSAConnectedComponents implements ProgramDescription {
 			// parse input arguments
 			fileOutput = true;
 
-			if (args.length != 3) {
+			if (args.length != 4) {
 				System.err.println("Usage: GSAConnectedComponents <edge path> " +
-						"<result path> <max iterations>");
+						"<result path> <max iterations> <threshold>");
 				return false;
 			}
 
 			edgeInputPath = args[0];
 			outputPath = args[1];
 			maxIterations = Integer.parseInt(args[2]);
+			threshold = Integer.parseInt(args[3]);
 		} else {
 			System.out.println("Executing GSA Connected Components example with built-in default data.");
 			System.out.println("  Provide parameters to read input data from files.");
 			System.out.println("  See the documentation for the correct format of input files.");
-			System.out.println("  Usage: GSAConnectedComponents <edge path> <result path> <max iterations>");
+			System.out.println("  Usage: GSAConnectedComponents <edge path> <result path> <max iterations> <threshold>");
 		}
 		return true;
 	}
